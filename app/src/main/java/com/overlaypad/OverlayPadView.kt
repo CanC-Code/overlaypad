@@ -103,23 +103,41 @@ class OverlayPadView(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (w > 0 && h > 0) {
-            if (controls.isEmpty()) {
-                controls = store.loadControls(w, h)
-            }
-            pillNormX = store.getPillNormX()
-            pillNormY = store.getPillNormY()
+            releaseAllInputs()
+            controls = store.loadControls(w, h)
+            pillNormX = store.getPillNormX(w, h)
+            pillNormY = store.getPillNormY(w, h)
             pillTopX = pillNormX * w
             pillTopY = pillNormY * h
             pillInitialized = true
             updatePillRects()
+            invalidate()
+        }
+    }
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus) {
+            draggingEditPill = false
+            draggingHidePill = false
+            releaseAllInputs()
+        }
+    }
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (visibility != VISIBLE) {
+            draggingEditPill = false
+            draggingHidePill = false
+            releaseAllInputs()
         }
     }
 
     private fun updatePillRects() {
         if (width <= 0 || height <= 0) return
         if (!pillInitialized) {
-            pillTopX = store.getPillNormX() * width
-            pillTopY = store.getPillNormY() * height
+            pillTopX = store.getPillNormX(width, height) * width
+            pillTopY = store.getPillNormY(width, height) * height
             pillInitialized = true
         }
         val maxX = max(12f, width - pillW - 12f)
@@ -139,15 +157,15 @@ class OverlayPadView(
         if (width <= 0 || height <= 0) return
         pillNormX = (pillTopX / width).coerceIn(0.05f, 0.92f)
         pillNormY = (pillTopY / height).coerceIn(0.08f, 0.82f)
-        store.savePillPosition(pillNormX, pillNormY)
+        store.savePillPosition(pillNormX, pillNormY, width, height)
     }
 
     fun reloadControls() {
         if (width > 0 && height > 0) {
             releaseAllInputs()
             controls = store.loadControls(width, height)
-            pillNormX = store.getPillNormX()
-            pillNormY = store.getPillNormY()
+            pillNormX = store.getPillNormX(width, height)
+            pillNormY = store.getPillNormY(width, height)
             pillTopX = pillNormX * width
             pillTopY = pillNormY * height
             updatePillRects()
@@ -159,10 +177,10 @@ class OverlayPadView(
         if (width > 0 && height > 0) {
             releaseAllInputs()
             controls = store.defaultControls(width, height)
-            store.saveControls(controls)
-            pillNormX = 0.90f
-            pillNormY = 0.16f
-            store.savePillPosition(pillNormX, pillNormY)
+            store.saveControls(controls, width, height)
+            pillNormX = 0.80f
+            pillNormY = 0.14f
+            store.savePillPosition(pillNormX, pillNormY, width, height)
             pillTopX = pillNormX * width
             pillTopY = pillNormY * height
             updatePillRects()
@@ -171,9 +189,20 @@ class OverlayPadView(
     }
 
     fun releaseAllInputs() {
-        for (c in activePointerToControl.values) {
-            dispatchControlRelease(c)
+        for (c in controls) {
+            if (!c.isStick) {
+                onButtonEvent(c.linuxCodePrimary, false)
+                if (c.linuxCodeSecondary != 0) {
+                    onAxisEvent(c.linuxCodeSecondary, 0)
+                }
+            }
         }
+        onAxisEvent(0x00, 0)
+        onAxisEvent(0x01, 0)
+        onAxisEvent(0x03, 0)
+        onAxisEvent(0x04, 0)
+        onAxisEvent(0x10, 0)
+        onAxisEvent(0x11, 0)
         activePointerToControl.clear()
         stickThumbOffset.clear()
         invalidate()
@@ -186,10 +215,10 @@ class OverlayPadView(
             onAxisEvent(c.linuxCodeSecondary, 255)
         }
         when (c.id) {
-            "dpad_l" -> onAxisEvent(0x10, -1) // ABS_HAT0X left
-            "dpad_r" -> onAxisEvent(0x10, 1)  // ABS_HAT0X right
-            "dpad_u" -> onAxisEvent(0x11, -1) // ABS_HAT0Y up
-            "dpad_d" -> onAxisEvent(0x11, 1)  // ABS_HAT0Y down
+            "dpad_l" -> onAxisEvent(0x10, -1)
+            "dpad_r" -> onAxisEvent(0x10, 1)
+            "dpad_u" -> onAxisEvent(0x11, -1)
+            "dpad_d" -> onAxisEvent(0x11, 1)
         }
     }
 
@@ -204,8 +233,8 @@ class OverlayPadView(
                 onAxisEvent(c.linuxCodeSecondary, 0)
             }
             when (c.id) {
-                "dpad_l", "dpad_r" -> onAxisEvent(0x10, 0) // ABS_HAT0X center
-                "dpad_u", "dpad_d" -> onAxisEvent(0x11, 0) // ABS_HAT0Y center
+                "dpad_l", "dpad_r" -> onAxisEvent(0x10, 0)
+                "dpad_u", "dpad_d" -> onAxisEvent(0x11, 0)
             }
         }
     }
@@ -285,7 +314,7 @@ class OverlayPadView(
                         draggingEditPill = false
                         draggingHidePill = false
                         persistPillPosition()
-                        store.saveControls(controls)
+                        store.saveControls(controls, width, height)
                         if (moved < 20f && actionMasked != MotionEvent.ACTION_CANCEL) {
                             if (wasEdit) {
                                 editMode = false
@@ -300,7 +329,7 @@ class OverlayPadView(
                         return true
                     }
                     activePointerToControl.remove(pointerId)
-                    store.saveControls(controls)
+                    store.saveControls(controls, width, height)
                     invalidate()
                     return true
                 }
