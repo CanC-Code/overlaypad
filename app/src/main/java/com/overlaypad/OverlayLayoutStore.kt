@@ -22,46 +22,79 @@ class OverlayLayoutStore(context: Context) {
 
     fun defaultControls(screenWidth: Int, screenHeight: Int): MutableList<PadControl> {
         val base = minOf(screenWidth, screenHeight).toFloat()
-        val btnR = base * 0.068f
-        val stickR = base * 0.145f
+        val btnR = base * 0.056f
+        val smallBtnR = base * 0.044f
+        val stickR = base * 0.125f
+
         return mutableListOf(
-            PadControl("ls", "LS", true, 0x00, 0x01, 0.18f, 0.68f, stickR, false),
-            PadControl("rs", "RS", true, 0x03, 0x04, 0.72f, 0.42f, stickR * 0.85f, false),
-            PadControl("a", "A", false, 304, 0, 0.84f, 0.76f, btnR, false),
-            PadControl("b", "B", false, 305, 0, 0.92f, 0.64f, btnR, false),
-            PadControl("x", "X", false, 307, 0, 0.76f, 0.64f, btnR, false),
-            PadControl("y", "Y", false, 308, 0, 0.84f, 0.52f, btnR, false),
-            PadControl("lb", "LB", false, 310, 0, 0.16f, 0.22f, btnR * 0.9f, false),
-            PadControl("rb", "RB", false, 311, 0, 0.84f, 0.22f, btnR * 0.9f, false),
-            PadControl("start", "START", false, 315, 0, 0.56f, 0.16f, btnR * 0.85f, false),
-            PadControl("select", "BACK", false, 314, 0, 0.44f, 0.16f, btnR * 0.85f, false)
+            // Dual thumbsticks
+            PadControl("ls", "LS", true, 0x00, 0x01, 0.16f, 0.72f, stickR, false),
+            PadControl("rs", "RS", true, 0x03, 0x04, 0.70f, 0.72f, stickR * 0.90f, false),
+
+            // Stick clicks (L3 / R3)
+            PadControl("l3", "L3", false, 317, 0, 0.27f, 0.84f, smallBtnR, false),
+            PadControl("r3", "R3", false, 318, 0, 0.81f, 0.84f, smallBtnR, false),
+
+            // Face buttons (A, B, X, Y)
+            PadControl("a", "A", false, 304, 0, 0.86f, 0.56f, btnR, false),
+            PadControl("b", "B", false, 305, 0, 0.93f, 0.46f, btnR, false),
+            PadControl("x", "X", false, 307, 0, 0.79f, 0.46f, btnR, false),
+            PadControl("y", "Y", false, 308, 0, 0.86f, 0.36f, btnR, false),
+
+            // D-pad (Up, Down, Left, Right)
+            PadControl("dpad_u", "UP", false, 544, 0, 0.16f, 0.44f, smallBtnR * 1.05f, false),
+            PadControl("dpad_d", "DN", false, 545, 0, 0.16f, 0.58f, smallBtnR * 1.05f, false),
+            PadControl("dpad_l", "LT-", false, 546, 0, 0.09f, 0.51f, smallBtnR * 1.05f, false),
+            PadControl("dpad_r", "RT+", false, 547, 0, 0.23f, 0.51f, smallBtnR * 1.05f, false),
+
+            // Shoulder bumpers & triggers
+            PadControl("lb", "LB", false, 310, 0, 0.14f, 0.20f, btnR * 0.92f, false),
+            PadControl("rb", "RB", false, 311, 0, 0.86f, 0.20f, btnR * 0.92f, false),
+            PadControl("lt", "LT", false, 312, 0x02, 0.25f, 0.20f, btnR * 0.92f, false),
+            PadControl("rt", "RT", false, 313, 0x05, 0.75f, 0.20f, btnR * 0.92f, false),
+
+            // System buttons
+            PadControl("select", "BACK", false, 314, 0, 0.42f, 0.16f, smallBtnR, false),
+            PadControl("guide", "HOME", false, 316, 0, 0.50f, 0.16f, smallBtnR, false),
+            PadControl("start", "START", false, 315, 0, 0.58f, 0.16f, smallBtnR, false)
         )
     }
 
     fun loadControls(screenWidth: Int, screenHeight: Int): MutableList<PadControl> {
-        val raw = prefs.getString("controls_json", null) ?: return defaultControls(screenWidth, screenHeight)
+        val defaults = defaultControls(screenWidth, screenHeight)
+        val raw = prefs.getString("controls_json", null) ?: return defaults
         return try {
             val arr = JSONArray(raw)
-            val list = mutableListOf<PadControl>()
+            val loadedById = LinkedHashMap<String, PadControl>()
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
-                list.add(
-                    PadControl(
-                        id = obj.getString("id"),
-                        label = obj.getString("label"),
-                        isStick = obj.getBoolean("isStick"),
-                        linuxCodePrimary = obj.getInt("linuxCodePrimary"),
-                        linuxCodeSecondary = obj.optInt("linuxCodeSecondary", 0),
-                        normX = obj.getDouble("normX").toFloat().coerceIn(0.05f, 0.95f),
-                        normY = obj.getDouble("normY").toFloat().coerceIn(0.08f, 0.92f),
-                        radiusPx = obj.getDouble("radiusPx").toFloat().coerceIn(48f, 360f),
-                        hidden = obj.optBoolean("hidden", false)
-                    )
+                val id = obj.getString("id")
+                loadedById[id] = PadControl(
+                    id = id,
+                    label = obj.getString("label"),
+                    isStick = obj.getBoolean("isStick"),
+                    linuxCodePrimary = obj.getInt("linuxCodePrimary"),
+                    linuxCodeSecondary = obj.optInt("linuxCodeSecondary", 0),
+                    normX = obj.getDouble("normX").toFloat().coerceIn(0.05f, 0.95f),
+                    normY = obj.getDouble("normY").toFloat().coerceIn(0.08f, 0.92f),
+                    radiusPx = obj.getDouble("radiusPx").toFloat().coerceIn(36f, 360f),
+                    hidden = obj.optBoolean("hidden", false)
                 )
             }
-            if (list.isEmpty()) defaultControls(screenWidth, screenHeight) else list
+            if (loadedById.isEmpty()) return defaults
+
+            val merged = mutableListOf<PadControl>()
+            for (def in defaults) {
+                merged.add(loadedById[def.id] ?: def)
+            }
+            for ((id, extra) in loadedById) {
+                if (merged.none { it.id == id }) {
+                    merged.add(extra)
+                }
+            }
+            merged
         } catch (_: Throwable) {
-            defaultControls(screenWidth, screenHeight)
+            defaults
         }
     }
 

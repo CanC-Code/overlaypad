@@ -4,8 +4,10 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -15,14 +17,19 @@ class OverlayPadView(
     private val store: OverlayLayoutStore,
     private val onButtonEvent: (linuxKeyCode: Int, pressed: Boolean) -> Unit,
     private val onAxisEvent: (linuxAbsCode: Int, value: Int) -> Unit,
+    private val onEditModeToggleRequest: ((Boolean) -> Unit)? = null,
     private val onCollapseRequest: (() -> Unit)? = null
 ) : View(context) {
 
     var editMode: Boolean = false
         set(value) {
-            field = value
-            activePointerToControl.clear()
-            invalidate()
+            if (field != value) {
+                releaseAllInputs()
+                field = value
+                draggingEditPill = false
+                draggingHidePill = false
+                invalidate()
+            }
         }
 
     var stickSensitivity: Float = store.getStickSensitivity()
@@ -41,38 +48,53 @@ class OverlayPadView(
     private val activePointerToControl = HashMap<Int, PadControl>()
     private val stickThumbOffset = HashMap<String, Pair<Float, Float>>()
 
-    private var pillCenterX = 140f
-    private var pillCenterY = 220f
-    private val pillRadius = 64f
-    private var draggingPill = false
+    // On-screen utility pills: EDIT (top-right) and HIDE (below EDIT)
+    private var editPillRect = RectF()
+    private var hidePillRect = RectF()
+    private var pillTopX = 0f
+    private var pillTopY = 140f
+    private val pillW = 148f
+    private val pillH = 62f
+    private val pillGap = 16f
+
+    private var draggingEditPill = false
+    private var draggingHidePill = false
     private var pillDownX = 0f
     private var pillDownY = 0f
 
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 5f
-        color = Color.argb(190, 255, 255, 255)
+        strokeWidth = 4f
+        color = Color.argb(195, 255, 255, 255)
     }
     private val hiddenRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 3f
-        color = Color.argb(90, 255, 215, 0)
+        color = Color.argb(110, 255, 215, 0)
     }
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.argb(90, 40, 140, 255)
+        color = Color.argb(92, 40, 140, 255)
     }
     private val activeFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.argb(165, 80, 220, 140)
+        color = Color.argb(175, 80, 220, 140)
     }
-    private val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val editPillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.argb(200, 30, 35, 45)
+        color = Color.argb(220, 45, 52, 68)
+    }
+    private val editActivePillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(235, 210, 155, 20)
+    }
+    private val hidePillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(220, 30, 85, 165)
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
-        textSize = 36f
+        textSize = 32f
         textAlign = Paint.Align.CENTER
     }
 
@@ -82,9 +104,26 @@ class OverlayPadView(
             if (controls.isEmpty()) {
                 controls = store.loadControls(w, h)
             }
-            pillCenterX = (w - 110f).coerceAtLeast(pillRadius + 16f)
-            pillCenterY = 180f.coerceAtLeast(pillRadius + 16f)
+            if (pillTopX <= 0f) {
+                pillTopX = max(16f, w - pillW - 24f)
+                pillTopY = max(96f, h * 0.14f)
+            }
+            updatePillRects()
         }
+    }
+
+    private fun updatePillRects() {
+        val clampedX = pillTopX.coerceIn(12f, max(12f, width - pillW - 12f))
+        val clampedY = pillTopY.coerceIn(12f, max(12f, height - (pillH * 2f + pillGap + 12f)))
+        pillTopX = clampedX
+        pillTopY = clampedY
+        editPillRect.set(clampedX, clampedY, clampedX + pillW, clampedY + pillH)
+        hidePillRect.set(
+            clampedX,
+            clampedY + pillH + pillGap,
+            clampedX + pillW,
+            clampedY + pillH * 2f + pillGap
+        )
     }
 
     fun reloadControls() {
@@ -106,24 +145,36 @@ class OverlayPadView(
 
     fun releaseAllInputs() {
         for (c in activePointerToControl.values) {
-            if (c.isStick) {
-                stickThumbOffset.remove(c.id)
-                onAxisEvent(c.linuxCodePrimary, 0)
-                onAxisEvent(c.linuxCodeSecondary, 0)
-            } else {
-                onButtonEvent(c.linuxCodePrimary, false)
-            }
+            dispatchControlRelease(c)
         }
         activePointerToControl.clear()
+        stickThumbOffset.clear()
         invalidate()
+    }
+
+    private fun dispatchControlPress(c: PadControl) {
+        if (c.isStick) return
+        onButtonEvent(c.linuxCodePrimary, true)
+        if (c.linuxCodeSecondary != 0) {
+            onAxisEvent(c.linuxCodeSecondary, 255)
+        }
+    }
+
+    private fun dispatchControlRelease(c: PadControl) {
+        if (c.isStick) {
+            stickThumbOffset.remove(c.id)
+            onAxisEvent(c.linuxCodePrimary, 0)
+            onAxisEvent(c.linuxCodeSecondary, 0)
+        } else {
+            onButtonEvent(c.linuxCodePrimary, false)
+            if (c.linuxCodeSecondary != 0) {
+                onAxisEvent(c.linuxCodeSecondary, 0)
+            }
+        }
     }
 
     private fun centerX(c: PadControl): Float = c.normX * width
     private fun centerY(c: PadControl): Float = c.normY * height
-
-    private fun isPillHit(x: Float, y: Float): Boolean {
-        return hypot(x - pillCenterX, y - pillCenterY) <= pillRadius * 1.2f
-    }
 
     private fun hitTest(x: Float, y: Float): PadControl? {
         for (c in controls.asReversed()) {
@@ -136,6 +187,7 @@ class OverlayPadView(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (width <= 0 || height <= 0) return false
+        updatePillRects()
 
         val actionMasked = event.actionMasked
         val pointerIndex = event.actionIndex
@@ -146,8 +198,14 @@ class OverlayPadView(
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                     val x = event.getX(pointerIndex)
                     val y = event.getY(pointerIndex)
-                    if (isPillHit(x, y)) {
-                        draggingPill = true
+                    if (editPillRect.contains(x, y)) {
+                        draggingEditPill = true
+                        pillDownX = x
+                        pillDownY = y
+                        return true
+                    }
+                    if (hidePillRect.contains(x, y)) {
+                        draggingHidePill = true
                         pillDownX = x
                         pillDownY = y
                         return true
@@ -162,9 +220,14 @@ class OverlayPadView(
                 }
                 MotionEvent.ACTION_MOVE -> {
                     var handled = false
-                    if (draggingPill) {
-                        pillCenterX = event.getX(0).coerceIn(pillRadius + 12f, width - pillRadius - 12f)
-                        pillCenterY = event.getY(0).coerceIn(pillRadius + 12f, height - pillRadius - 12f)
+                    if (draggingEditPill || draggingHidePill) {
+                        val dx = event.getX(0) - pillDownX
+                        val dy = event.getY(0) - pillDownY
+                        pillTopX += dx
+                        pillTopY += dy
+                        pillDownX = event.getX(0)
+                        pillDownY = event.getY(0)
+                        updatePillRects()
                         handled = true
                     }
                     for (i in 0 until event.pointerCount) {
@@ -178,8 +241,27 @@ class OverlayPadView(
                     return handled
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (draggingPill && pointerId == 0) {
-                        draggingPill = false
+                    if (draggingEditPill && pointerId == 0) {
+                        val moved = hypot(event.getX(pointerIndex) - pillDownX, event.getY(pointerIndex) - pillDownY)
+                        draggingEditPill = false
+                        store.saveControls(controls)
+                        if (moved < 20f && actionMasked != MotionEvent.ACTION_CANCEL) {
+                            editMode = false
+                            onEditModeToggleRequest?.invoke(false)
+                        }
+                        invalidate()
+                        return true
+                    }
+                    if (draggingHidePill && pointerId == 0) {
+                        val moved = hypot(event.getX(pointerIndex) - pillDownX, event.getY(pointerIndex) - pillDownY)
+                        draggingHidePill = false
+                        if (moved < 20f && actionMasked != MotionEvent.ACTION_CANCEL) {
+                            editMode = false
+                            onEditModeToggleRequest?.invoke(false)
+                            onCollapseRequest?.invoke()
+                        }
+                        invalidate()
+                        return true
                     }
                     activePointerToControl.remove(pointerId)
                     store.saveControls(controls)
@@ -194,8 +276,14 @@ class OverlayPadView(
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val x = event.getX(pointerIndex)
                 val y = event.getY(pointerIndex)
-                if (isPillHit(x, y)) {
-                    draggingPill = true
+                if (editPillRect.contains(x, y)) {
+                    draggingEditPill = true
+                    pillDownX = x
+                    pillDownY = y
+                    return true
+                }
+                if (hidePillRect.contains(x, y)) {
+                    draggingHidePill = true
                     pillDownX = x
                     pillDownY = y
                     return true
@@ -205,17 +293,20 @@ class OverlayPadView(
                 if (c.isStick) {
                     updateStick(c, x, y)
                 } else {
-                    onButtonEvent(c.linuxCodePrimary, true)
+                    dispatchControlPress(c)
                 }
                 invalidate()
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                if (draggingPill) {
+                if (draggingEditPill || draggingHidePill) {
                     val x = event.getX(0)
                     val y = event.getY(0)
-                    pillCenterX = x.coerceIn(pillRadius + 12f, width - pillRadius - 12f)
-                    pillCenterY = y.coerceIn(pillRadius + 12f, height - pillRadius - 12f)
+                    pillTopX += x - pillDownX
+                    pillTopY += y - pillDownY
+                    pillDownX = x
+                    pillDownY = y
+                    updatePillRects()
                     invalidate()
                     return true
                 }
@@ -232,23 +323,29 @@ class OverlayPadView(
                 return handled
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
-                if (draggingPill && pointerId == 0) {
+                if (draggingEditPill && pointerId == 0) {
                     val moved = hypot(event.getX(pointerIndex) - pillDownX, event.getY(pointerIndex) - pillDownY)
-                    draggingPill = false
-                    if (moved < 24f && actionMasked != MotionEvent.ACTION_CANCEL) {
+                    draggingEditPill = false
+                    if (moved < 20f && actionMasked != MotionEvent.ACTION_CANCEL) {
+                        releaseAllInputs()
+                        editMode = true
+                        onEditModeToggleRequest?.invoke(true)
+                    }
+                    invalidate()
+                    return true
+                }
+                if (draggingHidePill && pointerId == 0) {
+                    val moved = hypot(event.getX(pointerIndex) - pillDownX, event.getY(pointerIndex) - pillDownY)
+                    draggingHidePill = false
+                    if (moved < 20f && actionMasked != MotionEvent.ACTION_CANCEL) {
                         releaseAllInputs()
                         onCollapseRequest?.invoke()
                     }
+                    invalidate()
                     return true
                 }
                 val c = activePointerToControl.remove(pointerId) ?: return false
-                if (c.isStick) {
-                    stickThumbOffset.remove(c.id)
-                    onAxisEvent(c.linuxCodePrimary, 0)
-                    onAxisEvent(c.linuxCodeSecondary, 0)
-                } else {
-                    onButtonEvent(c.linuxCodePrimary, false)
-                }
+                dispatchControlRelease(c)
                 invalidate()
                 return true
             }
@@ -257,7 +354,7 @@ class OverlayPadView(
     }
 
     private fun applyDeadzoneAndSensitivity(rawNorm: Float): Float {
-        val mag = kotlin.math.abs(rawNorm)
+        val mag = abs(rawNorm)
         if (mag <= stickDeadzone) return 0f
         val sign = if (rawNorm >= 0f) 1f else -1f
         val rescaled = ((mag - stickDeadzone) / max(0.001f, 1f - stickDeadzone)).coerceIn(0f, 1f)
@@ -287,6 +384,9 @@ class OverlayPadView(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        if (width <= 0 || height <= 0) return
+        updatePillRects()
+
         for (c in controls) {
             if (c.hidden && !editMode) continue
             val cx = centerX(c)
@@ -295,13 +395,13 @@ class OverlayPadView(
 
             if (c.hidden && editMode) {
                 canvas.drawCircle(cx, cy, c.radiusPx, hiddenRingPaint)
-                textPaint.textSize = min(34f, max(20f, c.radiusPx * 0.36f))
-                canvas.drawText("${c.label} (H)", cx, cy + textPaint.textSize * 0.35f, textPaint)
+                textPaint.textSize = min(28f, max(16f, c.radiusPx * 0.34f))
+                canvas.drawText("${c.label}(H)", cx, cy + textPaint.textSize * 0.35f, textPaint)
                 continue
             }
 
             canvas.drawCircle(cx, cy, c.radiusPx, if (isPressed) activeFillPaint else fillPaint)
-            ringPaint.color = if (editMode) Color.YELLOW else Color.argb(190, 255, 255, 255)
+            ringPaint.color = if (editMode) Color.YELLOW else Color.argb(195, 255, 255, 255)
             canvas.drawCircle(cx, cy, c.radiusPx, ringPaint)
 
             if (c.isStick) {
@@ -311,15 +411,28 @@ class OverlayPadView(
                 canvas.drawCircle(tx, ty, c.radiusPx * 0.36f, ringPaint)
             }
 
-            textPaint.textSize = min(40f, max(22f, c.radiusPx * 0.42f))
+            textPaint.textSize = min(34f, max(18f, c.radiusPx * 0.40f))
             canvas.drawText(c.label, cx, cy + textPaint.textSize * 0.35f, textPaint)
         }
 
-        // Collapse / minimize pill handle
-        canvas.drawCircle(pillCenterX, pillCenterY, pillRadius, pillPaint)
-        ringPaint.color = Color.argb(220, 120, 200, 255)
-        canvas.drawCircle(pillCenterX, pillCenterY, pillRadius, ringPaint)
-        textPaint.textSize = 26f
-        canvas.drawText("HIDE", pillCenterX, pillCenterY + 9f, textPaint)
+        // EDIT pill (toggles edit mode directly on overlay)
+        canvas.drawRoundRect(
+            editPillRect,
+            24f,
+            24f,
+            if (editMode) editActivePillPaint else editPillPaint
+        )
+        ringPaint.color = if (editMode) Color.WHITE else Color.argb(210, 255, 215, 0)
+        canvas.drawRoundRect(editPillRect, 24f, 24f, ringPaint)
+        textPaint.textSize = 24f
+        textPaint.color = if (editMode) Color.BLACK else Color.WHITE
+        canvas.drawText(if (editMode) "DONE" else "EDIT", editPillRect.centerX(), editPillRect.centerY() + 8f, textPaint)
+
+        // HIDE pill (collapses overlay into small bubble)
+        canvas.drawRoundRect(hidePillRect, 24f, 24f, hidePillPaint)
+        ringPaint.color = Color.argb(210, 140, 210, 255)
+        canvas.drawRoundRect(hidePillRect, 24f, 24f, ringPaint)
+        textPaint.color = Color.WHITE
+        canvas.drawText("HIDE", hidePillRect.centerX(), hidePillRect.centerY() + 8f, textPaint)
     }
 }

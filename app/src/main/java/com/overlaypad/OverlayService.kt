@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
@@ -72,6 +71,9 @@ class OverlayService : Service() {
                 } catch (_: Throwable) {
                 }
             },
+            onEditModeToggleRequest = { enabled ->
+                editMode = enabled
+            },
             onCollapseRequest = {
                 collapseOverlay()
             }
@@ -102,6 +104,8 @@ class OverlayService : Service() {
     }
 
     fun collapseOverlay() {
+        editMode = false
+        overlayView?.editMode = false
         overlayView?.releaseAllInputs()
         removeExpandedOverlay()
         if (collapsedBubble != null) {
@@ -216,6 +220,8 @@ class OverlayService : Service() {
                 overlayView?.resetLayout()
             }
             ACTION_STOP_OVERLAY -> {
+                editMode = false
+                overlayView?.editMode = false
                 overlayView?.releaseAllInputs()
                 stopSelf()
             }
@@ -224,6 +230,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        editMode = false
         overlayView?.releaseAllInputs()
         removeExpandedOverlay()
         removeCollapsedBubble()
