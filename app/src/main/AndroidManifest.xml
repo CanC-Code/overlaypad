@@ -15,8 +15,7 @@
             android:authorities="${applicationId}.shizuku"
             android:enabled="true"
             android:exported="true"
-            android:multiprocess="false"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+            android:multiprocess="false" />
 
         <activity
             android:name=".MainActivity"
@@ -31,10 +30,6 @@
             android:name=".OverlayService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Virtual gamepad overlay input extension" />
-        </service>
+            android:foregroundServiceType="specialUse" />
     </application>
 </manifest>
