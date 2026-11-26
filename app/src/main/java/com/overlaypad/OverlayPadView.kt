@@ -18,7 +18,8 @@ class OverlayPadView(
     private val onButtonEvent: (linuxKeyCode: Int, pressed: Boolean) -> Unit,
     private val onAxisEvent: (linuxAbsCode: Int, value: Int) -> Unit,
     private val onEditModeToggleRequest: ((Boolean) -> Unit)? = null,
-    private val onCollapseRequest: (() -> Unit)? = null
+    private val onCollapseRequest: (() -> Unit)? = null,
+    private val onInspectControlRequest: ((PadControl, List<PadControl>) -> Unit)? = null
 ) : View(context) {
 
     var editMode: Boolean = false
@@ -28,6 +29,8 @@ class OverlayPadView(
                 field = value
                 draggingEditPill = false
                 draggingHidePill = false
+                editTouchStartPos.clear()
+                editMovedPointers.clear()
                 invalidate()
             }
         }
@@ -46,7 +49,12 @@ class OverlayPadView(
 
     private var controls: MutableList<PadControl> = mutableListOf()
     private val activePointerToControl = HashMap<Int, PadControl>()
+    private val latchedControlIds = HashSet<String>()
     private val stickThumbOffset = HashMap<String, Pair<Float, Float>>()
+
+    // Track short tap vs drag in Edit Mode so tapping a control opens the inspector
+    private val editTouchStartPos = HashMap<Int, Pair<Float, Float>>()
+    private val editMovedPointers = HashSet<Int>()
 
     private var editPillRect = RectF()
     private var hidePillRect = RectF()
@@ -69,10 +77,19 @@ class OverlayPadView(
         strokeWidth = 4f
         color = Color.argb(195, 255, 255, 255)
     }
+    private val stickyRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 6f
+        color = Color.argb(245, 255, 200, 40)
+    }
     private val hiddenRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 3f
-        color = Color.argb(110, 255, 215, 0)
+        color = Color.argb(125, 255, 215, 0)
+    }
+    private val hiddenFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(38, 120, 120, 140)
     }
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -81,6 +98,10 @@ class OverlayPadView(
     private val activeFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = Color.argb(175, 80, 220, 140)
+    }
+    private val latchedFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(190, 235, 145, 25)
     }
     private val editPillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -160,6 +181,15 @@ class OverlayPadView(
         store.savePillPosition(pillNormX, pillNormY, width, height)
     }
 
+    fun getControlsSnapshot(): List<PadControl> = controls.toList()
+
+    fun saveCurrentControls() {
+        if (width > 0 && height > 0) {
+            store.saveControls(controls, width, height)
+            invalidate()
+        }
+    }
+
     fun reloadControls() {
         if (width > 0 && height > 0) {
             releaseAllInputs()
@@ -204,9 +234,12 @@ class OverlayPadView(
         onAxisEvent(0x10, 0)
         onAxisEvent(0x11, 0)
         activePointerToControl.clear()
+        latchedControlIds.clear()
         stickThumbOffset.clear()
         invalidate()
     }
+
+    private fun effectiveActionId(c: PadControl): String = c.mappedActionId ?: c.id
 
     private fun dispatchControlPress(c: PadControl) {
         if (c.isStick) return
@@ -214,7 +247,7 @@ class OverlayPadView(
         if (c.linuxCodeSecondary != 0) {
             onAxisEvent(c.linuxCodeSecondary, 255)
         }
-        when (c.id) {
+        when (effectiveActionId(c)) {
             "dpad_l" -> onAxisEvent(0x10, -1)
             "dpad_r" -> onAxisEvent(0x10, 1)
             "dpad_u" -> onAxisEvent(0x11, -1)
@@ -232,7 +265,7 @@ class OverlayPadView(
             if (c.linuxCodeSecondary != 0) {
                 onAxisEvent(c.linuxCodeSecondary, 0)
             }
-            when (c.id) {
+            when (effectiveActionId(c)) {
                 "dpad_l", "dpad_r" -> onAxisEvent(0x10, 0)
                 "dpad_u", "dpad_d" -> onAxisEvent(0x11, 0)
             }
@@ -279,6 +312,8 @@ class OverlayPadView(
                     val c = hitTest(x, y)
                     if (c != null) {
                         activePointerToControl[pointerId] = c
+                        editTouchStartPos[pointerId] = x to y
+                        editMovedPointers.remove(pointerId)
                         invalidate()
                         return true
                     }
@@ -299,8 +334,16 @@ class OverlayPadView(
                     for (i in 0 until event.pointerCount) {
                         val pid = event.getPointerId(i)
                         val c = activePointerToControl[pid] ?: continue
-                        c.normX = (event.getX(i) / width).coerceIn(0.05f, 0.95f)
-                        c.normY = (event.getY(i) / height).coerceIn(0.08f, 0.92f)
+                        val start = editTouchStartPos[pid]
+                        val curX = event.getX(i)
+                        val curY = event.getY(i)
+                        if (start != null && hypot(curX - start.first, curY - start.second) > 16f) {
+                            editMovedPointers.add(pid)
+                        }
+                        if (editMovedPointers.contains(pid)) {
+                            c.normX = (curX / width).coerceIn(0.05f, 0.95f)
+                            c.normY = (curY / height).coerceIn(0.08f, 0.92f)
+                        }
                         handled = true
                     }
                     if (handled) invalidate()
@@ -328,8 +371,15 @@ class OverlayPadView(
                         invalidate()
                         return true
                     }
-                    activePointerToControl.remove(pointerId)
-                    store.saveControls(controls, width, height)
+                    val c = activePointerToControl.remove(pointerId)
+                    val wasDragged = editMovedPointers.remove(pointerId)
+                    editTouchStartPos.remove(pointerId)
+                    if (c != null) {
+                        store.saveControls(controls, width, height)
+                        if (!wasDragged && actionMasked != MotionEvent.ACTION_CANCEL) {
+                            onInspectControlRequest?.invoke(c, controls)
+                        }
+                    }
                     invalidate()
                     return true
                 }
@@ -357,6 +407,15 @@ class OverlayPadView(
                 activePointerToControl[pointerId] = c
                 if (c.isStick) {
                     updateStick(c, x, y)
+                } else if (c.sticky) {
+                    // Sticky toggle: 1st press latches ON, 2nd press releases OFF
+                    if (latchedControlIds.contains(c.id)) {
+                        latchedControlIds.remove(c.id)
+                        dispatchControlRelease(c)
+                    } else {
+                        latchedControlIds.add(c.id)
+                        dispatchControlPress(c)
+                    }
                 } else {
                     dispatchControlPress(c)
                 }
@@ -408,7 +467,9 @@ class OverlayPadView(
                     return true
                 }
                 val c = activePointerToControl.remove(pointerId) ?: return false
-                dispatchControlRelease(c)
+                if (!c.sticky) {
+                    dispatchControlRelease(c)
+                }
                 invalidate()
                 return true
             }
@@ -454,18 +515,32 @@ class OverlayPadView(
             if (c.hidden && !editMode) continue
             val cx = centerX(c)
             val cy = centerY(c)
-            val isPressed = activePointerToControl.values.any { it.id == c.id }
+            val isTouchPressed = activePointerToControl.values.any { it.id == c.id }
+            val isLatched = latchedControlIds.contains(c.id)
+            val labelText = c.displayLabel()
 
             if (c.hidden && editMode) {
+                canvas.drawCircle(cx, cy, c.radiusPx, hiddenFillPaint)
                 canvas.drawCircle(cx, cy, c.radiusPx, hiddenRingPaint)
-                textPaint.textSize = min(28f, max(16f, c.radiusPx * 0.34f))
-                canvas.drawText("${c.label}(H)", cx, cy + textPaint.textSize * 0.35f, textPaint)
+                textPaint.color = Color.argb(190, 255, 225, 110)
+                textPaint.textSize = min(24f, max(14f, c.radiusPx * 0.28f))
+                canvas.drawText("$labelText [OFF]", cx, cy + textPaint.textSize * 0.35f, textPaint)
                 continue
             }
 
-            canvas.drawCircle(cx, cy, c.radiusPx, if (isPressed) activeFillPaint else fillPaint)
-            ringPaint.color = if (editMode) Color.YELLOW else Color.argb(195, 255, 255, 255)
-            canvas.drawCircle(cx, cy, c.radiusPx, ringPaint)
+            val fill = when {
+                isLatched -> latchedFillPaint
+                isTouchPressed -> activeFillPaint
+                else -> fillPaint
+            }
+            canvas.drawCircle(cx, cy, c.radiusPx, fill)
+
+            val stroke = when {
+                isLatched || (c.sticky && !c.isStick) -> stickyRingPaint
+                editMode -> ringPaint.apply { color = Color.YELLOW }
+                else -> ringPaint.apply { color = Color.argb(195, 255, 255, 255) }
+            }
+            canvas.drawCircle(cx, cy, c.radiusPx, stroke)
 
             if (c.isStick) {
                 val offset = stickThumbOffset[c.id]
@@ -474,8 +549,10 @@ class OverlayPadView(
                 canvas.drawCircle(tx, ty, c.radiusPx * 0.36f, ringPaint)
             }
 
-            textPaint.textSize = min(34f, max(18f, c.radiusPx * 0.40f))
-            canvas.drawText(c.label, cx, cy + textPaint.textSize * 0.35f, textPaint)
+            textPaint.color = Color.WHITE
+            val scaleFactor = if (labelText.length > 5) 0.27f else 0.38f
+            textPaint.textSize = min(32f, max(15f, c.radiusPx * scaleFactor))
+            canvas.drawText(labelText, cx, cy + textPaint.textSize * 0.35f, textPaint)
         }
 
         canvas.drawRoundRect(

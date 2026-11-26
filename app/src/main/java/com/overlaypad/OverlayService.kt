@@ -8,11 +8,19 @@ import android.app.Service
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.view.WindowManager
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.LinearLayout
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import kotlin.math.hypot
@@ -23,6 +31,7 @@ class OverlayService : Service() {
     private lateinit var store: OverlayLayoutStore
     private var overlayView: OverlayPadView? = null
     private var collapsedBubble: TextView? = null
+    private var inspectorView: View? = null
     private var isCollapsed = false
     private var editMode = false
 
@@ -47,6 +56,7 @@ class OverlayService : Service() {
 
     private fun showExpandedOverlay() {
         removeCollapsedBubble()
+        removeInspector()
         if (overlayView != null) {
             overlayView?.editMode = editMode
             overlayView?.stickSensitivity = store.getStickSensitivity()
@@ -73,9 +83,13 @@ class OverlayService : Service() {
             },
             onEditModeToggleRequest = { enabled ->
                 editMode = enabled
+                if (!enabled) removeInspector()
             },
             onCollapseRequest = {
                 collapseOverlay()
+            },
+            onInspectControlRequest = { control, allControls ->
+                showControlInspector(control, allControls)
             }
         ).apply {
             this.editMode = this@OverlayService.editMode
@@ -103,8 +117,151 @@ class OverlayService : Service() {
         isCollapsed = false
     }
 
+    private fun showControlInspector(control: PadControl, allControls: List<PadControl>) {
+        removeInspector()
+
+        val cardBg = GradientDrawable().apply {
+            setColor(Color.argb(242, 24, 28, 38))
+            cornerRadius = 28f
+            setStroke(3, Color.argb(230, 255, 205, 50))
+        }
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = cardBg
+            setPadding(36, 28, 36, 28)
+        }
+
+        val title = TextView(this).apply {
+            text = "Configure ${control.defaultLabel}"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+        }
+        root.addView(title)
+
+        val subtitle = TextView(this).apply {
+            text = if (control.isStick) {
+                "Thumbstick visibility (drag on screen to move)"
+            } else {
+                "Tap options below or drag on screen to move"
+            }
+            setTextColor(Color.argb(190, 210, 220, 235))
+            textSize = 13f
+            setPadding(0, 4, 0, 16)
+        }
+        root.addView(subtitle)
+
+        val hideCheck = CheckBox(this).apply {
+            text = "Hide ${control.defaultLabel} during play"
+            setTextColor(Color.WHITE)
+            isChecked = control.hidden
+            setOnCheckedChangeListener { _, checked ->
+                control.hidden = checked
+                overlayView?.saveCurrentControls()
+            }
+        }
+        root.addView(hideCheck)
+
+        if (!control.isStick) {
+            val stickyCheck = CheckBox(this).apply {
+                text = "Sticky Toggle (1st tap = hold, 2nd tap = release)"
+                setTextColor(Color.argb(255, 255, 220, 110))
+                isChecked = control.sticky
+                setOnCheckedChangeListener { _, checked ->
+                    control.sticky = checked
+                    overlayView?.saveCurrentControls()
+                }
+            }
+            root.addView(stickyCheck)
+
+            val mapLabel = TextView(this).apply {
+                text = "Mapped Output Action:"
+                setTextColor(Color.WHITE)
+                textSize = 14f
+                setPadding(0, 16, 0, 6)
+            }
+            root.addView(mapLabel)
+
+            val options = OverlayLayoutStore.ACTION_OPTIONS
+            val labels = options.map { "${it.label} (${it.id.uppercase()})" }
+            val currentIdx = options.indexOfFirst { it.id == (control.mappedActionId ?: control.id) }.coerceAtLeast(0)
+
+            val spinner = Spinner(this).apply {
+                adapter = ArrayAdapter(
+                    this@OverlayService,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    labels
+                )
+                setSelection(currentIdx, false)
+                onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                        val chosen = options[position]
+                        control.mappedActionId = chosen.id
+                        control.linuxCodePrimary = chosen.primaryCode
+                        control.linuxCodeSecondary = chosen.secondaryCode
+                        overlayView?.saveCurrentControls()
+                    }
+
+                    override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                }
+            }
+            root.addView(spinner)
+        }
+
+        val btnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            setPadding(0, 18, 0, 0)
+        }
+
+        val showAllBtn = Button(this).apply {
+            text = "Unhide All"
+            setOnClickListener {
+                for (c in allControls) c.hidden = false
+                hideCheck.isChecked = false
+                overlayView?.saveCurrentControls()
+            }
+        }
+        btnRow.addView(showAllBtn)
+
+        val closeBtn = Button(this).apply {
+            text = "Close"
+            setOnClickListener {
+                removeInspector()
+            }
+        }
+        btnRow.addView(closeBtn)
+
+        root.addView(btnRow)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+
+        windowManager.addView(root, params)
+        inspectorView = root
+    }
+
+    private fun removeInspector() {
+        inspectorView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (_: Throwable) {
+            }
+        }
+        inspectorView = null
+    }
+
     fun collapseOverlay() {
         editMode = false
+        removeInspector()
         overlayView?.editMode = false
         overlayView?.releaseAllInputs()
         removeExpandedOverlay()
@@ -199,6 +356,7 @@ class OverlayService : Service() {
         when (intent?.action) {
             ACTION_SET_EDIT_MODE -> {
                 editMode = intent.getBooleanExtra(EXTRA_EDIT_MODE, false)
+                if (!editMode) removeInspector()
                 if (editMode && isCollapsed) {
                     showExpandedOverlay()
                 } else {
@@ -217,10 +375,12 @@ class OverlayService : Service() {
                 overlayView?.reloadControls()
             }
             ACTION_RESET_LAYOUT -> {
+                removeInspector()
                 overlayView?.resetLayout()
             }
             ACTION_STOP_OVERLAY -> {
                 editMode = false
+                removeInspector()
                 overlayView?.editMode = false
                 overlayView?.releaseAllInputs()
                 stopSelf()
@@ -231,6 +391,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         editMode = false
+        removeInspector()
         overlayView?.releaseAllInputs()
         removeExpandedOverlay()
         removeCollapsedBubble()
