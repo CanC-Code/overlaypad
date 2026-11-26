@@ -6,7 +6,6 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
 import android.view.InputEvent
-import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.MotionEvent
 import com.overlaypad.service.IGamepadService
@@ -91,6 +90,11 @@ class GamepadUserService() : IGamepadService.Stub() {
         val androidKeyCode = mapLinuxToAndroidKeyCode(linuxKeyCode) ?: return
         val now = SystemClock.uptimeMillis()
         val action = if (pressed) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP
+        val source = if (linuxKeyCode in 544..547) {
+            InputDevice.SOURCE_DPAD or InputDevice.SOURCE_GAMEPAD
+        } else {
+            InputDevice.SOURCE_GAMEPAD
+        }
         val event = KeyEvent(
             now,
             now,
@@ -98,10 +102,10 @@ class GamepadUserService() : IGamepadService.Stub() {
             androidKeyCode,
             0,
             0,
-            KeyCharacterMap.VIRTUAL_KEYBOARD,
+            0,
             linuxKeyCode,
             0,
-            InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_JOYSTICK
+            source
         )
         inject(event)
     }

@@ -31,6 +31,11 @@ class MainActivity : AppCompatActivity() {
     private var settingsOpen = false
 
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { _, _ ->
+        if (ShizukuController.hasPermission()) {
+            ShizukuController.bindUserService(this) { _, _ ->
+                runOnUiThread { refreshStatus() }
+            }
+        }
         refreshStatus()
     }
 
@@ -67,23 +72,23 @@ class MainActivity : AppCompatActivity() {
             if (!ShizukuController.hasPermission()) {
                 ShizukuController.requestPermission()
             } else {
-                ShizukuController.bindUserService(this) { ok ->
-                    runOnUiThread {
-                        statusText.text = if (ok) {
-                            "Status: uinput gamepad active"
-                        } else {
-                            "Status: Shizuku bound, /dev/uinput failed"
-                        }
-                    }
+                ShizukuController.bindUserService(this) { _, _ ->
+                    runOnUiThread { refreshStatus() }
                 }
             }
             refreshStatus()
         }
 
         findViewById<Button>(R.id.btn_start_overlay).setOnClickListener {
+            if (ShizukuController.hasPermission() && ShizukuController.service == null) {
+                ShizukuController.bindUserService(this) { _, _ ->
+                    runOnUiThread { refreshStatus() }
+                }
+            }
             if (Settings.canDrawOverlays(this)) {
                 startForegroundService(Intent(this, OverlayService::class.java))
             }
+            refreshStatus()
         }
 
         findViewById<Button>(R.id.btn_collapse_overlay).setOnClickListener {
@@ -143,6 +148,7 @@ class MainActivity : AppCompatActivity() {
                 }
             )
             ShizukuController.unbindUserService(this)
+            refreshStatus()
         }
     }
 
@@ -220,6 +226,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (ShizukuController.hasPermission() && ShizukuController.service == null) {
+            ShizukuController.bindUserService(this) { _, _ ->
+                runOnUiThread { refreshStatus() }
+            }
+        }
         refreshStatus()
         if (settingsOpen) populateHideCheckboxes()
     }
@@ -233,6 +244,7 @@ class MainActivity : AppCompatActivity() {
         val overlayOk = Settings.canDrawOverlays(this)
         val shizukuRunning = ShizukuController.isShizukuAvailable()
         val shizukuPerm = ShizukuController.hasPermission()
-        statusText.text = "OverlayPerm=$overlayOk | Shizuku=$shizukuRunning | Perm=$shizukuPerm"
+        val backend = ShizukuController.lastStatus
+        statusText.text = "Overlay=$overlayOk | Shizuku=$shizukuRunning | Perm=$shizukuPerm\nBackend: $backend"
     }
 }
