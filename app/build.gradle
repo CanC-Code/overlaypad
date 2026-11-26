@@ -8,6 +8,7 @@ def shizukuVersion = "13.1.5"
 android {
     namespace "com.overlaypad"
     compileSdk 34
+    ndkVersion "26.1.10909125"
 
     defaultConfig {
         applicationId "com.overlaypad"
