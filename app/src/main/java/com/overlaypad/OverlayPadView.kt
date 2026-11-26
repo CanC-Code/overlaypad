@@ -52,7 +52,6 @@ class OverlayPadView(
     private val latchedControlIds = HashSet<String>()
     private val stickThumbOffset = HashMap<String, Pair<Float, Float>>()
 
-    // Track short tap vs drag in Edit Mode so tapping a control opens the inspector
     private val editTouchStartPos = HashMap<Int, Pair<Float, Float>>()
     private val editMovedPointers = HashSet<Int>()
 
@@ -180,8 +179,6 @@ class OverlayPadView(
         pillNormY = (pillTopY / height).coerceIn(0.08f, 0.82f)
         store.savePillPosition(pillNormX, pillNormY, width, height)
     }
-
-    fun getControlsSnapshot(): List<PadControl> = controls.toList()
 
     fun saveCurrentControls() {
         if (width > 0 && height > 0) {
@@ -408,7 +405,6 @@ class OverlayPadView(
                 if (c.isStick) {
                     updateStick(c, x, y)
                 } else if (c.sticky) {
-                    // Sticky toggle: 1st press latches ON, 2nd press releases OFF
                     if (latchedControlIds.contains(c.id)) {
                         latchedControlIds.remove(c.id)
                         dispatchControlRelease(c)

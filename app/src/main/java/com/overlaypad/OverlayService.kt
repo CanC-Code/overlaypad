@@ -139,17 +139,39 @@ class OverlayService : Service() {
         }
         root.addView(title)
 
-        val subtitle = TextView(this).apply {
-            text = if (control.isStick) {
-                "Thumbstick visibility (drag on screen to move)"
-            } else {
-                "Tap options below or drag on screen to move"
-            }
-            setTextColor(Color.argb(190, 210, 220, 235))
-            textSize = 13f
-            setPadding(0, 4, 0, 16)
+        val sizeLabel = TextView(this).apply {
+            text = "Size: ${control.radiusPx.toInt()}px"
+            setTextColor(Color.argb(210, 200, 225, 255))
+            textSize = 14f
+            setPadding(0, 10, 0, 6)
         }
-        root.addView(subtitle)
+        root.addView(sizeLabel)
+
+        val sizeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        }
+
+        val smallerBtn = Button(this).apply {
+            text = "- Smaller"
+            setOnClickListener {
+                control.radiusPx = (control.radiusPx - 12f).coerceIn(36f, 360f)
+                sizeLabel.text = "Size: ${control.radiusPx.toInt()}px"
+                overlayView?.saveCurrentControls()
+            }
+        }
+        sizeRow.addView(smallerBtn)
+
+        val largerBtn = Button(this).apply {
+            text = "+ Larger"
+            setOnClickListener {
+                control.radiusPx = (control.radiusPx + 12f).coerceIn(36f, 360f)
+                sizeLabel.text = "Size: ${control.radiusPx.toInt()}px"
+                overlayView?.saveCurrentControls()
+            }
+        }
+        sizeRow.addView(largerBtn)
+        root.addView(sizeRow)
 
         val hideCheck = CheckBox(this).apply {
             text = "Hide ${control.defaultLabel} during play"
@@ -169,6 +191,7 @@ class OverlayService : Service() {
                 isChecked = control.sticky
                 setOnCheckedChangeListener { _, checked ->
                     control.sticky = checked
+                    if (!checked) overlayView?.releaseAllInputs()
                     overlayView?.saveCurrentControls()
                 }
             }
@@ -178,7 +201,7 @@ class OverlayService : Service() {
                 text = "Mapped Output Action:"
                 setTextColor(Color.WHITE)
                 textSize = 14f
-                setPadding(0, 16, 0, 6)
+                setPadding(0, 14, 0, 6)
             }
             root.addView(mapLabel)
 
