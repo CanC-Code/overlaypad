@@ -11,6 +11,31 @@ data class PadActionOption(
     val secondaryCode: Int = 0
 )
 
+private val PAD_ACTION_OPTIONS: List<PadActionOption> = listOf(
+    PadActionOption("a", "A", 304, 0),
+    PadActionOption("b", "B", 305, 0),
+    PadActionOption("x", "X", 307, 0),
+    PadActionOption("y", "Y", 308, 0),
+    PadActionOption("lb", "LB", 310, 0),
+    PadActionOption("rb", "RB", 311, 0),
+    PadActionOption("lt", "LT", 312, 0x02),
+    PadActionOption("rt", "RT", 313, 0x05),
+    PadActionOption("l3", "L3", 317, 0),
+    PadActionOption("r3", "R3", 318, 0),
+    PadActionOption("dpad_u", "UP", 544, 0),
+    PadActionOption("dpad_d", "DN", 545, 0),
+    PadActionOption("dpad_l", "LEFT", 546, 0),
+    PadActionOption("dpad_r", "RIGHT", 547, 0),
+    PadActionOption("select", "BACK", 314, 0),
+    PadActionOption("guide", "HOME", 316, 0),
+    PadActionOption("start", "START", 315, 0)
+)
+
+private fun findActionById(id: String?): PadActionOption? {
+    if (id.isNullOrEmpty()) return null
+    return PAD_ACTION_OPTIONS.find { it.id == id }
+}
+
 data class PadControl(
     val id: String,
     val defaultLabel: String,
@@ -25,7 +50,7 @@ data class PadControl(
     var mappedActionId: String? = null
 ) {
     fun displayLabel(): String {
-        val mapped = OverlayLayoutStore.actionById(mappedActionId)
+        val mapped = findActionById(mappedActionId)
         val base = if (mapped != null && mapped.id != id) {
             "$defaultLabel→${mapped.label}"
         } else {
@@ -40,30 +65,10 @@ class OverlayLayoutStore(context: Context) {
     private val prefs = context.getSharedPreferences("overlay_layout", Context.MODE_PRIVATE)
 
     companion object {
-        val ACTION_OPTIONS: List<PadActionOption> = listOf(
-            PadActionOption("a", "A", 304, 0),
-            PadActionOption("b", "B", 305, 0),
-            PadActionOption("x", "X", 307, 0),
-            PadActionOption("y", "Y", 308, 0),
-            PadActionOption("lb", "LB", 310, 0),
-            PadActionOption("rb", "RB", 311, 0),
-            PadActionOption("lt", "LT", 312, 0x02),
-            PadActionOption("rt", "RT", 313, 0x05),
-            PadActionOption("l3", "L3", 317, 0),
-            PadActionOption("r3", "R3", 318, 0),
-            PadActionOption("dpad_u", "UP", 544, 0),
-            PadActionOption("dpad_d", "DN", 545, 0),
-            PadActionOption("dpad_l", "LEFT", 546, 0),
-            PadActionOption("dpad_r", "RIGHT", 547, 0),
-            PadActionOption("select", "BACK", 314, 0),
-            PadActionOption("guide", "HOME", 316, 0),
-            PadActionOption("start", "START", 315, 0)
-        )
+        val ACTION_OPTIONS: List<PadActionOption>
+            get() = PAD_ACTION_OPTIONS
 
-        fun actionById(id: String?): PadActionOption? {
-            if (id.isNullOrEmpty()) return null
-            return ACTION_OPTIONS.find { it.id == id }
-        }
+        fun actionById(id: String?): PadActionOption? = findActionById(id)
     }
 
     private fun orientationSuffix(screenWidth: Int, screenHeight: Int): String {
@@ -159,7 +164,7 @@ class OverlayLayoutStore(context: Context) {
                 val id = obj.getString("id")
                 val defaultLabel = obj.optString("defaultLabel", obj.optString("label", id.uppercase()))
                 val mappedId = obj.optString("mappedActionId", "").ifEmpty { id }
-                val mappedOpt = actionById(mappedId)
+                val mappedOpt = findActionById(mappedId)
                 loadedById[id] = PadControl(
                     id = id,
                     defaultLabel = defaultLabel,
