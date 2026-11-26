@@ -73,7 +73,7 @@ Java_com_overlaypad_GamepadUserService_nativeInitGamepad(
     if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0 ||
         ioctl(fd, UI_SET_EVBIT, EV_ABS) < 0 ||
         ioctl(fd, UI_SET_EVBIT, EV_SYN) < 0) {
-        LOGE("Failed setting event bits: errno=%d", errno);
+        LOGE("Failed setting event bits: errno=%d (%s)", errno, std::strerror(errno));
         close(fd);
         return JNI_FALSE;
     }
@@ -86,7 +86,9 @@ Java_com_overlaypad_GamepadUserService_nativeInitGamepad(
         BTN_DPAD_UP, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT
     };
     for (int btn : buttons) {
-        ioctl(fd, UI_SET_KEYBIT, btn);
+        if (ioctl(fd, UI_SET_KEYBIT, btn) < 0) {
+            LOGE("UI_SET_KEYBIT failed for %d: errno=%d (%s)", btn, errno, std::strerror(errno));
+        }
     }
 
     setup_abs(fd, ABS_X,      -32768, 32767, 16, 128);
