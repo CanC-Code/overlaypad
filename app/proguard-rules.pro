@@ -1,0 +1,2 @@
+-keep class com.overlaypad.GamepadUserService { *; }
+-keep interface com.overlaypad.service.IGamepadService { *; }
