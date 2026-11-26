@@ -87,6 +87,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btn_collapse_overlay).setOnClickListener {
+            editMode = false
+            editButton.text = "Edit Layout: OFF"
             startService(
                 Intent(this, OverlayService::class.java).apply {
                     action = OverlayService.ACTION_COLLAPSE_OVERLAY
@@ -113,6 +115,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        findViewById<Button>(R.id.btn_show_all_controls).setOnClickListener {
+            setAllHiddenState(false)
+        }
+
+        findViewById<Button>(R.id.btn_hide_all_controls).setOnClickListener {
+            setAllHiddenState(true)
+        }
+
         setupSliders()
 
         findViewById<Button>(R.id.btn_reset_layout).setOnClickListener {
@@ -134,6 +144,17 @@ class MainActivity : AppCompatActivity() {
             )
             ShizukuController.unbindUserService(this)
         }
+    }
+
+    private fun setAllHiddenState(hidden: Boolean) {
+        val dm = resources.displayMetrics
+        val controls = store.loadControls(dm.widthPixels, dm.heightPixels)
+        for (c in controls) {
+            c.hidden = hidden
+        }
+        store.saveControls(controls)
+        notifyOverlaySettingsChanged()
+        if (settingsOpen) populateHideCheckboxes()
     }
 
     private fun setupSliders() {
@@ -179,8 +200,9 @@ class MainActivity : AppCompatActivity() {
                 text = "Hide ${c.label}"
                 isChecked = c.hidden
                 setOnCheckedChangeListener { _, isChecked ->
-                    c.hidden = isChecked
-                    store.saveControls(controls)
+                    val latest = store.loadControls(dm.widthPixels, dm.heightPixels)
+                    latest.find { it.id == c.id }?.hidden = isChecked
+                    store.saveControls(latest)
                     notifyOverlaySettingsChanged()
                 }
             }

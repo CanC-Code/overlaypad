@@ -89,26 +89,28 @@ Java_com_overlaypad_GamepadUserService_nativeInitGamepad(
         ioctl(fd, UI_SET_KEYBIT, btn);
     }
 
-    setup_abs(fd, ABS_X,  -32768, 32767, 16, 128);
-    setup_abs(fd, ABS_Y,  -32768, 32767, 16, 128);
-    setup_abs(fd, ABS_RX, -32768, 32767, 16, 128);
-    setup_abs(fd, ABS_RY, -32768, 32767, 16, 128);
-    setup_abs(fd, ABS_Z,       0,   255,  0,   0);
-    setup_abs(fd, ABS_RZ,      0,   255,  0,   0);
+    setup_abs(fd, ABS_X,      -32768, 32767, 16, 128);
+    setup_abs(fd, ABS_Y,      -32768, 32767, 16, 128);
+    setup_abs(fd, ABS_RX,     -32768, 32767, 16, 128);
+    setup_abs(fd, ABS_RY,     -32768, 32767, 16, 128);
+    setup_abs(fd, ABS_Z,           0,   255,  0,   0);
+    setup_abs(fd, ABS_RZ,          0,   255,  0,   0);
+    setup_abs(fd, ABS_HAT0X,      -1,     1,  0,   0);
+    setup_abs(fd, ABS_HAT0Y,      -1,     1,  0,   0);
 
     struct uinput_setup usetup;
     std::memset(&usetup, 0, sizeof(usetup));
-    usetup.id.bustype = BUS_BLUETOOTH;
+    usetup.id.bustype = BUS_USB;
     usetup.id.vendor  = static_cast<uint16_t>(vendor_id);
     usetup.id.product = static_cast<uint16_t>(product_id);
-    usetup.id.version = 0x0100;
+    usetup.id.version = 0x0110;
 
     const char* raw_name = env->GetStringUTFChars(j_name, nullptr);
     if (raw_name != nullptr) {
         std::strncpy(usetup.name, raw_name, UINPUT_MAX_NAME_SIZE - 1);
         env->ReleaseStringUTFChars(j_name, raw_name);
     } else {
-        std::strncpy(usetup.name, "OverlayPad Gamepad", UINPUT_MAX_NAME_SIZE - 1);
+        std::strncpy(usetup.name, "Xbox Wireless Controller", UINPUT_MAX_NAME_SIZE - 1);
     }
 
     if (ioctl(fd, UI_DEV_SETUP, &usetup) < 0) {

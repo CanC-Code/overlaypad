@@ -48,11 +48,13 @@ class OverlayPadView(
     private val activePointerToControl = HashMap<Int, PadControl>()
     private val stickThumbOffset = HashMap<String, Pair<Float, Float>>()
 
-    // On-screen utility pills: EDIT (top-right) and HIDE (below EDIT)
     private var editPillRect = RectF()
     private var hidePillRect = RectF()
-    private var pillTopX = 0f
-    private var pillTopY = 140f
+    private var pillNormX: Float = store.getPillNormX()
+    private var pillNormY: Float = store.getPillNormY()
+    private var pillTopX: Float = 0f
+    private var pillTopY: Float = 0f
+    private var pillInitialized = false
     private val pillW = 148f
     private val pillH = 62f
     private val pillGap = 16f
@@ -104,32 +106,51 @@ class OverlayPadView(
             if (controls.isEmpty()) {
                 controls = store.loadControls(w, h)
             }
-            if (pillTopX <= 0f) {
-                pillTopX = max(16f, w - pillW - 24f)
-                pillTopY = max(96f, h * 0.14f)
-            }
+            pillNormX = store.getPillNormX()
+            pillNormY = store.getPillNormY()
+            pillTopX = pillNormX * w
+            pillTopY = pillNormY * h
+            pillInitialized = true
             updatePillRects()
         }
     }
 
     private fun updatePillRects() {
-        val clampedX = pillTopX.coerceIn(12f, max(12f, width - pillW - 12f))
-        val clampedY = pillTopY.coerceIn(12f, max(12f, height - (pillH * 2f + pillGap + 12f)))
-        pillTopX = clampedX
-        pillTopY = clampedY
-        editPillRect.set(clampedX, clampedY, clampedX + pillW, clampedY + pillH)
+        if (width <= 0 || height <= 0) return
+        if (!pillInitialized) {
+            pillTopX = store.getPillNormX() * width
+            pillTopY = store.getPillNormY() * height
+            pillInitialized = true
+        }
+        val maxX = max(12f, width - pillW - 12f)
+        val maxY = max(12f, height - (pillH * 2f + pillGap + 12f))
+        pillTopX = pillTopX.coerceIn(12f, maxX)
+        pillTopY = pillTopY.coerceIn(12f, maxY)
+        editPillRect.set(pillTopX, pillTopY, pillTopX + pillW, pillTopY + pillH)
         hidePillRect.set(
-            clampedX,
-            clampedY + pillH + pillGap,
-            clampedX + pillW,
-            clampedY + pillH * 2f + pillGap
+            pillTopX,
+            pillTopY + pillH + pillGap,
+            pillTopX + pillW,
+            pillTopY + pillH * 2f + pillGap
         )
+    }
+
+    private fun persistPillPosition() {
+        if (width <= 0 || height <= 0) return
+        pillNormX = (pillTopX / width).coerceIn(0.05f, 0.92f)
+        pillNormY = (pillTopY / height).coerceIn(0.08f, 0.82f)
+        store.savePillPosition(pillNormX, pillNormY)
     }
 
     fun reloadControls() {
         if (width > 0 && height > 0) {
             releaseAllInputs()
             controls = store.loadControls(width, height)
+            pillNormX = store.getPillNormX()
+            pillNormY = store.getPillNormY()
+            pillTopX = pillNormX * width
+            pillTopY = pillNormY * height
+            updatePillRects()
             invalidate()
         }
     }
@@ -139,6 +160,12 @@ class OverlayPadView(
             releaseAllInputs()
             controls = store.defaultControls(width, height)
             store.saveControls(controls)
+            pillNormX = 0.90f
+            pillNormY = 0.16f
+            store.savePillPosition(pillNormX, pillNormY)
+            pillTopX = pillNormX * width
+            pillTopY = pillNormY * height
+            updatePillRects()
             invalidate()
         }
     }
@@ -158,6 +185,12 @@ class OverlayPadView(
         if (c.linuxCodeSecondary != 0) {
             onAxisEvent(c.linuxCodeSecondary, 255)
         }
+        when (c.id) {
+            "dpad_l" -> onAxisEvent(0x10, -1) // ABS_HAT0X left
+            "dpad_r" -> onAxisEvent(0x10, 1)  // ABS_HAT0X right
+            "dpad_u" -> onAxisEvent(0x11, -1) // ABS_HAT0Y up
+            "dpad_d" -> onAxisEvent(0x11, 1)  // ABS_HAT0Y down
+        }
     }
 
     private fun dispatchControlRelease(c: PadControl) {
@@ -169,6 +202,10 @@ class OverlayPadView(
             onButtonEvent(c.linuxCodePrimary, false)
             if (c.linuxCodeSecondary != 0) {
                 onAxisEvent(c.linuxCodeSecondary, 0)
+            }
+            when (c.id) {
+                "dpad_l", "dpad_r" -> onAxisEvent(0x10, 0) // ABS_HAT0X center
+                "dpad_u", "dpad_d" -> onAxisEvent(0x11, 0) // ABS_HAT0Y center
             }
         }
     }
@@ -241,24 +278,23 @@ class OverlayPadView(
                     return handled
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (draggingEditPill && pointerId == 0) {
+                    if ((draggingEditPill || draggingHidePill) && pointerId == 0) {
+                        val wasEdit = draggingEditPill
+                        val wasHide = draggingHidePill
                         val moved = hypot(event.getX(pointerIndex) - pillDownX, event.getY(pointerIndex) - pillDownY)
                         draggingEditPill = false
+                        draggingHidePill = false
+                        persistPillPosition()
                         store.saveControls(controls)
                         if (moved < 20f && actionMasked != MotionEvent.ACTION_CANCEL) {
-                            editMode = false
-                            onEditModeToggleRequest?.invoke(false)
-                        }
-                        invalidate()
-                        return true
-                    }
-                    if (draggingHidePill && pointerId == 0) {
-                        val moved = hypot(event.getX(pointerIndex) - pillDownX, event.getY(pointerIndex) - pillDownY)
-                        draggingHidePill = false
-                        if (moved < 20f && actionMasked != MotionEvent.ACTION_CANCEL) {
-                            editMode = false
-                            onEditModeToggleRequest?.invoke(false)
-                            onCollapseRequest?.invoke()
+                            if (wasEdit) {
+                                editMode = false
+                                onEditModeToggleRequest?.invoke(false)
+                            } else if (wasHide) {
+                                editMode = false
+                                onEditModeToggleRequest?.invoke(false)
+                                onCollapseRequest?.invoke()
+                            }
                         }
                         invalidate()
                         return true
@@ -323,23 +359,21 @@ class OverlayPadView(
                 return handled
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
-                if (draggingEditPill && pointerId == 0) {
+                if ((draggingEditPill || draggingHidePill) && pointerId == 0) {
+                    val wasEdit = draggingEditPill
+                    val wasHide = draggingHidePill
                     val moved = hypot(event.getX(pointerIndex) - pillDownX, event.getY(pointerIndex) - pillDownY)
                     draggingEditPill = false
-                    if (moved < 20f && actionMasked != MotionEvent.ACTION_CANCEL) {
-                        releaseAllInputs()
-                        editMode = true
-                        onEditModeToggleRequest?.invoke(true)
-                    }
-                    invalidate()
-                    return true
-                }
-                if (draggingHidePill && pointerId == 0) {
-                    val moved = hypot(event.getX(pointerIndex) - pillDownX, event.getY(pointerIndex) - pillDownY)
                     draggingHidePill = false
+                    persistPillPosition()
                     if (moved < 20f && actionMasked != MotionEvent.ACTION_CANCEL) {
                         releaseAllInputs()
-                        onCollapseRequest?.invoke()
+                        if (wasEdit) {
+                            editMode = true
+                            onEditModeToggleRequest?.invoke(true)
+                        } else if (wasHide) {
+                            onCollapseRequest?.invoke()
+                        }
                     }
                     invalidate()
                     return true
@@ -415,7 +449,6 @@ class OverlayPadView(
             canvas.drawText(c.label, cx, cy + textPaint.textSize * 0.35f, textPaint)
         }
 
-        // EDIT pill (toggles edit mode directly on overlay)
         canvas.drawRoundRect(
             editPillRect,
             24f,
@@ -428,7 +461,6 @@ class OverlayPadView(
         textPaint.color = if (editMode) Color.BLACK else Color.WHITE
         canvas.drawText(if (editMode) "DONE" else "EDIT", editPillRect.centerX(), editPillRect.centerY() + 8f, textPaint)
 
-        // HIDE pill (collapses overlay into small bubble)
         canvas.drawRoundRect(hidePillRect, 24f, 24f, hidePillPaint)
         ringPaint.color = Color.argb(210, 140, 210, 255)
         canvas.drawRoundRect(hidePillRect, 24f, 24f, ringPaint)

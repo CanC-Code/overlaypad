@@ -116,6 +116,16 @@ class OverlayLayoutStore(context: Context) {
         prefs.edit().putString("controls_json", arr.toString()).apply()
     }
 
+    fun getPillNormX(): Float = prefs.getFloat("pill_norm_x", 0.90f).coerceIn(0.08f, 0.92f)
+    fun getPillNormY(): Float = prefs.getFloat("pill_norm_y", 0.16f).coerceIn(0.08f, 0.82f)
+
+    fun savePillPosition(normX: Float, normY: Float) {
+        prefs.edit()
+            .putFloat("pill_norm_x", normX.coerceIn(0.08f, 0.92f))
+            .putFloat("pill_norm_y", normY.coerceIn(0.08f, 0.82f))
+            .apply()
+    }
+
     fun getStickSensitivity(): Float {
         return prefs.getFloat("stick_sensitivity", 1.0f).coerceIn(0.25f, 2.5f)
     }
