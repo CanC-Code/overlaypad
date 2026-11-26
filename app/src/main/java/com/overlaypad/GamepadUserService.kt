@@ -1,8 +1,8 @@
 package com.overlaypad
 
-import android.os.InputEvent
 import android.os.SystemClock
 import android.view.InputDevice
+import android.view.InputEvent
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -260,7 +260,7 @@ class GamepadUserService : IGamepadService.Stub() {
         }
     }
 
-    override fun destroy() {
+    fun destroy() {
         motionTicker?.cancel(true)
         motionExecutor.shutdownNow()
         resetAll()
