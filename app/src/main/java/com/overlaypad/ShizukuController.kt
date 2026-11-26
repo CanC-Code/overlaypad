@@ -4,13 +4,17 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.util.Log
 import com.overlaypad.service.IGamepadService
 import rikka.shizuku.Shizuku
 
 object ShizukuController {
 
     const val REQUEST_CODE_SHIZUKU = 1001
+    private const val TAG = "ShizukuController"
 
     @Volatile
     var service: IGamepadService? = null
@@ -18,6 +22,7 @@ object ShizukuController {
 
     private var connection: ServiceConnection? = null
     private var boundCallback: ((Boolean) -> Unit)? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun isShizukuAvailable(): Boolean {
         return try {
@@ -44,8 +49,14 @@ object ShizukuController {
     }
 
     fun bindUserService(context: Context, onResult: (Boolean) -> Unit) {
-        if (service != null) {
-            onResult(true)
+        val currentService = service
+        if (currentService != null) {
+            val ok = try {
+                currentService.initGamepad("Xbox Wireless Controller", 0x045e, 0x02e0)
+            } catch (_: Throwable) {
+                false
+            }
+            onResult(ok)
             return
         }
         boundCallback = onResult
@@ -54,13 +65,16 @@ object ShizukuController {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
                 val iface = IGamepadService.Stub.asInterface(binder)
                 service = iface
-                val ok = try {
-                    iface?.initGamepad("Xbox Wireless Controller", 0x045e, 0x02e0) ?: false
-                } catch (_: Throwable) {
-                    false
-                }
-                boundCallback?.invoke(ok)
-                boundCallback = null
+                mainHandler.postDelayed({
+                    val ok = try {
+                        iface?.initGamepad("Xbox Wireless Controller", 0x045e, 0x02e0) ?: false
+                    } catch (t: Throwable) {
+                        Log.e(TAG, "initGamepad failed", t)
+                        false
+                    }
+                    boundCallback?.invoke(ok)
+                    boundCallback = null
+                }, 150L)
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -79,7 +93,8 @@ object ShizukuController {
 
         try {
             Shizuku.bindUserService(args, conn)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            Log.e(TAG, "bindUserService failed", t)
             onResult(false)
         }
     }

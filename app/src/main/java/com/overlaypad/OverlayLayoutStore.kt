@@ -12,7 +12,8 @@ data class PadControl(
     val linuxCodeSecondary: Int = 0,
     var normX: Float,
     var normY: Float,
-    var radiusPx: Float
+    var radiusPx: Float,
+    var hidden: Boolean = false
 )
 
 class OverlayLayoutStore(context: Context) {
@@ -24,16 +25,16 @@ class OverlayLayoutStore(context: Context) {
         val btnR = base * 0.068f
         val stickR = base * 0.145f
         return mutableListOf(
-            PadControl("ls", "LS", true, 0x00, 0x01, 0.18f, 0.68f, stickR),
-            PadControl("rs", "RS", true, 0x03, 0x04, 0.72f, 0.42f, stickR * 0.85f),
-            PadControl("a", "A", false, 304, 0, 0.84f, 0.76f, btnR),
-            PadControl("b", "B", false, 305, 0, 0.92f, 0.64f, btnR),
-            PadControl("x", "X", false, 307, 0, 0.76f, 0.64f, btnR),
-            PadControl("y", "Y", false, 308, 0, 0.84f, 0.52f, btnR),
-            PadControl("lb", "LB", false, 310, 0, 0.16f, 0.22f, btnR * 0.9f),
-            PadControl("rb", "RB", false, 311, 0, 0.84f, 0.22f, btnR * 0.9f),
-            PadControl("start", "START", false, 315, 0, 0.56f, 0.16f, btnR * 0.85f),
-            PadControl("select", "BACK", false, 314, 0, 0.44f, 0.16f, btnR * 0.85f)
+            PadControl("ls", "LS", true, 0x00, 0x01, 0.18f, 0.68f, stickR, false),
+            PadControl("rs", "RS", true, 0x03, 0x04, 0.72f, 0.42f, stickR * 0.85f, false),
+            PadControl("a", "A", false, 304, 0, 0.84f, 0.76f, btnR, false),
+            PadControl("b", "B", false, 305, 0, 0.92f, 0.64f, btnR, false),
+            PadControl("x", "X", false, 307, 0, 0.76f, 0.64f, btnR, false),
+            PadControl("y", "Y", false, 308, 0, 0.84f, 0.52f, btnR, false),
+            PadControl("lb", "LB", false, 310, 0, 0.16f, 0.22f, btnR * 0.9f, false),
+            PadControl("rb", "RB", false, 311, 0, 0.84f, 0.22f, btnR * 0.9f, false),
+            PadControl("start", "START", false, 315, 0, 0.56f, 0.16f, btnR * 0.85f, false),
+            PadControl("select", "BACK", false, 314, 0, 0.44f, 0.16f, btnR * 0.85f, false)
         )
     }
 
@@ -53,7 +54,8 @@ class OverlayLayoutStore(context: Context) {
                         linuxCodeSecondary = obj.optInt("linuxCodeSecondary", 0),
                         normX = obj.getDouble("normX").toFloat().coerceIn(0.05f, 0.95f),
                         normY = obj.getDouble("normY").toFloat().coerceIn(0.08f, 0.92f),
-                        radiusPx = obj.getDouble("radiusPx").toFloat().coerceIn(48f, 360f)
+                        radiusPx = obj.getDouble("radiusPx").toFloat().coerceIn(48f, 360f),
+                        hidden = obj.optBoolean("hidden", false)
                     )
                 )
             }
@@ -75,8 +77,25 @@ class OverlayLayoutStore(context: Context) {
                 .put("normX", c.normX)
                 .put("normY", c.normY)
                 .put("radiusPx", c.radiusPx)
+                .put("hidden", c.hidden)
             arr.put(obj)
         }
         prefs.edit().putString("controls_json", arr.toString()).apply()
+    }
+
+    fun getStickSensitivity(): Float {
+        return prefs.getFloat("stick_sensitivity", 1.0f).coerceIn(0.25f, 2.5f)
+    }
+
+    fun setStickSensitivity(value: Float) {
+        prefs.edit().putFloat("stick_sensitivity", value.coerceIn(0.25f, 2.5f)).apply()
+    }
+
+    fun getStickDeadzone(): Float {
+        return prefs.getFloat("stick_deadzone", 0.10f).coerceIn(0.0f, 0.45f)
+    }
+
+    fun setStickDeadzone(value: Float) {
+        prefs.edit().putFloat("stick_deadzone", value.coerceIn(0.0f, 0.45f)).apply()
     }
 }
