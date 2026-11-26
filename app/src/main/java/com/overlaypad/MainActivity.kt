@@ -158,7 +158,7 @@ class MainActivity : AppCompatActivity() {
         for (c in controls) {
             c.hidden = hidden
         }
-        store.saveControls(controls)
+        store.saveControls(controls, dm.widthPixels, dm.heightPixels)
         notifyOverlaySettingsChanged()
         if (settingsOpen) populateHideCheckboxes()
     }
@@ -203,12 +203,12 @@ class MainActivity : AppCompatActivity() {
         val controls = store.loadControls(dm.widthPixels, dm.heightPixels)
         for (c in controls) {
             val cb = CheckBox(this).apply {
-                text = "Hide ${c.label}"
+                text = "Hide ${c.displayLabel()}"
                 isChecked = c.hidden
                 setOnCheckedChangeListener { _, isChecked ->
                     val latest = store.loadControls(dm.widthPixels, dm.heightPixels)
                     latest.find { it.id == c.id }?.hidden = isChecked
-                    store.saveControls(latest)
+                    store.saveControls(latest, dm.widthPixels, dm.heightPixels)
                     notifyOverlaySettingsChanged()
                 }
             }
