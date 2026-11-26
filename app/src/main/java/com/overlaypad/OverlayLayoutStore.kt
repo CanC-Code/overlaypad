@@ -90,9 +90,9 @@ class OverlayLayoutStore(context: Context) {
     fun defaultControls(screenWidth: Int, screenHeight: Int): MutableList<PadControl> {
         val base = minOf(screenWidth, screenHeight).toFloat()
         val isPortrait = screenHeight > screenWidth
-        val btnR = if (isPortrait) base * 0.056f else base * 0.056f
-        val smallBtnR = if (isPortrait) base * 0.044f else base * 0.044f
-        val stickR = if (isPortrait) base * 0.125f else base * 0.125f
+        val btnR = base * 0.056f
+        val smallBtnR = base * 0.044f
+        val stickR = base * 0.125f
 
         return if (isPortrait) {
             mutableListOf(
@@ -266,5 +266,150 @@ class OverlayLayoutStore(context: Context) {
 
     fun setStickDeadzone(value: Float) {
         prefs.edit().putFloat("stick_deadzone", value.coerceIn(0.0f, 0.45f)).apply()
+    }
+
+    // --- Named Profiles & Per-Game Auto-Load ---
+
+    private fun readProfilesRoot(): JSONObject {
+        val raw = prefs.getString("saved_profiles_json", null) ?: return JSONObject()
+        return try {
+            JSONObject(raw)
+        } catch (_: Throwable) {
+            JSONObject()
+        }
+    }
+
+    private fun writeProfilesRoot(root: JSONObject) {
+        prefs.edit().putString("saved_profiles_json", root.toString()).apply()
+    }
+
+    fun listProfileNames(): List<String> {
+        val root = readProfilesRoot()
+        val list = mutableListOf<String>()
+        val keys = root.keys()
+        while (keys.hasNext()) {
+            list.add(keys.next())
+        }
+        return list.sorted()
+    }
+
+    fun saveNamedProfile(rawName: String, linkedPackage: String? = null): Boolean {
+        val name = rawName.trim()
+        if (name.isEmpty()) return false
+        val root = readProfilesRoot()
+        val existingPkg = root.optJSONObject(name)?.optString("linkedPackage", "") ?: ""
+        val pkgToStore = linkedPackage?.trim() ?: existingPkg
+
+        val snapshot = JSONObject()
+            .put("controls_json", prefs.getString("controls_json", ""))
+            .put("controls_json_land", prefs.getString("controls_json_land", ""))
+            .put("controls_json_port", prefs.getString("controls_json_port", ""))
+            .put("pill_norm_x", prefs.getFloat("pill_norm_x", 0.80f).toDouble())
+            .put("pill_norm_y", prefs.getFloat("pill_norm_y", 0.14f).toDouble())
+            .put("pill_norm_x_land", prefs.getFloat("pill_norm_x_land", 0.80f).toDouble())
+            .put("pill_norm_y_land", prefs.getFloat("pill_norm_y_land", 0.14f).toDouble())
+            .put("pill_norm_x_port", prefs.getFloat("pill_norm_x_port", 0.80f).toDouble())
+            .put("pill_norm_y_port", prefs.getFloat("pill_norm_y_port", 0.14f).toDouble())
+            .put("overlay_opacity", getOverlayOpacity().toDouble())
+            .put("stick_sensitivity", getStickSensitivity().toDouble())
+            .put("stick_deadzone", getStickDeadzone().toDouble())
+            .put("linkedPackage", pkgToStore)
+
+        root.put(name, snapshot)
+        writeProfilesRoot(root)
+        setActiveProfileName(name)
+        return true
+    }
+
+    fun loadNamedProfile(name: String): Boolean {
+        val root = readProfilesRoot()
+        val snap = root.optJSONObject(name) ?: return false
+        val editor = prefs.edit()
+
+        val cGeneric = snap.optString("controls_json", "")
+        if (cGeneric.isNotEmpty()) editor.putString("controls_json", cGeneric)
+
+        val cLand = snap.optString("controls_json_land", "")
+        if (cLand.isNotEmpty()) editor.putString("controls_json_land", cLand) else editor.remove("controls_json_land")
+
+        val cPort = snap.optString("controls_json_port", "")
+        if (cPort.isNotEmpty()) editor.putString("controls_json_port", cPort) else editor.remove("controls_json_port")
+
+        editor.putFloat("pill_norm_x", snap.optDouble("pill_norm_x", 0.80).toFloat())
+        editor.putFloat("pill_norm_y", snap.optDouble("pill_norm_y", 0.14).toFloat())
+        editor.putFloat("pill_norm_x_land", snap.optDouble("pill_norm_x_land", 0.80).toFloat())
+        editor.putFloat("pill_norm_y_land", snap.optDouble("pill_norm_y_land", 0.14).toFloat())
+        editor.putFloat("pill_norm_x_port", snap.optDouble("pill_norm_x_port", 0.80).toFloat())
+        editor.putFloat("pill_norm_y_port", snap.optDouble("pill_norm_y_port", 0.14).toFloat())
+
+        editor.putFloat("overlay_opacity", snap.optDouble("overlay_opacity", 0.85).toFloat().coerceIn(0.25f, 1.0f))
+        editor.putFloat("stick_sensitivity", snap.optDouble("stick_sensitivity", 1.0).toFloat().coerceIn(0.25f, 2.5f))
+        editor.putFloat("stick_deadzone", snap.optDouble("stick_deadzone", 0.10).toFloat().coerceIn(0.0f, 0.45f))
+        editor.putString("active_profile_name", name)
+        editor.apply()
+        return true
+    }
+
+    fun deleteNamedProfile(name: String) {
+        val root = readProfilesRoot()
+        root.remove(name)
+        writeProfilesRoot(root)
+        if (getActiveProfileName() == name) {
+            setActiveProfileName("")
+        }
+    }
+
+    fun linkPackageToProfile(profileName: String, packageName: String) {
+        val root = readProfilesRoot()
+        val targetPkg = packageName.trim()
+        if (targetPkg.isNotEmpty()) {
+            val keys = root.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                val obj = root.optJSONObject(k)
+                if (obj != null && obj.optString("linkedPackage", "") == targetPkg && k != profileName) {
+                    obj.put("linkedPackage", "")
+                }
+            }
+        }
+        val targetObj = root.optJSONObject(profileName) ?: return
+        targetObj.put("linkedPackage", targetPkg)
+        writeProfilesRoot(root)
+    }
+
+    fun getLinkedPackageForProfile(profileName: String): String {
+        return readProfilesRoot().optJSONObject(profileName)?.optString("linkedPackage", "") ?: ""
+    }
+
+    fun findProfileForPackage(packageName: String): String? {
+        if (packageName.isBlank()) return null
+        val root = readProfilesRoot()
+        val keys = root.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            val pkg = root.optJSONObject(k)?.optString("linkedPackage", "") ?: ""
+            if (pkg == packageName) return k
+        }
+        return null
+    }
+
+    fun getActiveProfileName(): String = prefs.getString("active_profile_name", "") ?: ""
+
+    fun setActiveProfileName(name: String) {
+        prefs.edit().putString("active_profile_name", name).apply()
+    }
+
+    fun isAutoLoadPerGameEnabled(): Boolean = prefs.getBoolean("auto_load_per_game", false)
+
+    fun setAutoLoadPerGameEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_load_per_game", enabled).apply()
+    }
+
+    fun getLastDetectedGamePackage(): String = prefs.getString("last_detected_game_pkg", "") ?: ""
+
+    fun setLastDetectedGamePackage(pkg: String) {
+        if (pkg.isNotBlank()) {
+            prefs.edit().putString("last_detected_game_pkg", pkg.trim()).apply()
+        }
     }
 }

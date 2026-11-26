@@ -259,6 +259,108 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
+        <!-- Saved Profiles & Per-Game Auto-Load Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="14dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingBottom="8dp"
+                android:text="SAVED PROFILES &amp; AUTO-LOAD PER GAME"
+                android:textColor="#64748B"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <CheckBox
+                android:id="@+id/chk_autoload_per_game"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Auto-Load Linked Profile Per Game"
+                android:textColor="#F8FAFC"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/tv_profile_game_info"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="4dp"
+                android:paddingBottom="10dp"
+                android:text="Active Profile: None | Last Game: None"
+                android:textColor="#94A3B8"
+                android:textSize="12sp" />
+
+            <Spinner
+                android:id="@+id/spinner_profiles"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_btn_secondary"
+                android:paddingLeft="10dp"
+                android:paddingRight="10dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btn_save_profile"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_secondary"
+                    android:text="Save New"
+                    android:textAllCaps="false"
+                    android:textColor="#38BDF8"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btn_load_profile"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_secondary"
+                    android:text="Load"
+                    android:textAllCaps="false"
+                    android:textColor="#4ADE80"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btn_link_game_profile"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_secondary"
+                    android:text="Link Game"
+                    android:textAllCaps="false"
+                    android:textColor="#FDE047"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btn_delete_profile"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_danger"
+                    android:text="Delete"
+                    android:textAllCaps="false"
+                    android:textColor="#FDA4AF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+
         <!-- Tuning & Visibility Card -->
         <LinearLayout
             android:layout_width="match_parent"

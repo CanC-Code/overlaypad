@@ -6,12 +6,17 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.SeekBar
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import rikka.shizuku.Shizuku
 import java.util.Locale
@@ -32,10 +37,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deadzoneLabel: TextView
     private lateinit var deadzoneSeek: SeekBar
     private lateinit var hideContainer: LinearLayout
+    private lateinit var autoLoadCheck: CheckBox
+    private lateinit var profileGameInfo: TextView
+    private lateinit var profileSpinner: Spinner
     private lateinit var store: OverlayLayoutStore
 
     private var editMode = false
     private var settingsOpen = false
+    private var profileNames: List<String> = emptyList()
 
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { _, _ ->
         if (ShizukuController.hasPermission()) {
@@ -65,6 +74,9 @@ class MainActivity : AppCompatActivity() {
         deadzoneLabel = findViewById(R.id.tv_deadzone)
         deadzoneSeek = findViewById(R.id.seek_deadzone)
         hideContainer = findViewById(R.id.hide_controls_container)
+        autoLoadCheck = findViewById(R.id.chk_autoload_per_game)
+        profileGameInfo = findViewById(R.id.tv_profile_game_info)
+        profileSpinner = findViewById(R.id.spinner_profiles)
 
         Shizuku.addRequestPermissionResultListener(permissionListener)
 
@@ -143,6 +155,8 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Released all gamepad inputs", Toast.LENGTH_SHORT).show()
         }
 
+        setupProfileControls()
+
         settingsToggleButton.setOnClickListener {
             settingsOpen = !settingsOpen
             settingsToggleButton.text = if (settingsOpen) "Collapse" else "Expand"
@@ -184,6 +198,126 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun selectedProfileName(): String? {
+        if (profileNames.isEmpty()) return null
+        val idx = profileSpinner.selectedItemPosition
+        return if (idx in profileNames.indices) profileNames[idx] else null
+    }
+
+    private fun setupProfileControls() {
+        autoLoadCheck.isChecked = store.isAutoLoadPerGameEnabled()
+        autoLoadCheck.setOnCheckedChangeListener { _, checked ->
+            store.setAutoLoadPerGameEnabled(checked)
+            notifyOverlaySettingsChanged()
+        }
+
+        profileSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                updateProfileStatusText()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
+        findViewById<Button>(R.id.btn_save_profile).setOnClickListener {
+            val input = EditText(this).apply {
+                hint = "e.g. Banjo-Kazooie or Retro"
+                setText(store.getActiveProfileName())
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Save Layout Profile")
+                .setView(input)
+                .setPositiveButton("Save") { _, _ ->
+                    val name = input.text.toString().trim()
+                    if (store.saveNamedProfile(name)) {
+                        refreshProfilesSpinner(selectName = name)
+                        Toast.makeText(this, "Saved profile '$name'", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        findViewById<Button>(R.id.btn_load_profile).setOnClickListener {
+            val name = selectedProfileName()
+            if (name == null) {
+                Toast.makeText(this, "No saved profile selected", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (store.loadNamedProfile(name)) {
+                syncSlidersFromStore()
+                notifyOverlaySettingsChanged()
+                if (settingsOpen) populateHideCheckboxes()
+                updateProfileStatusText()
+                Toast.makeText(this, "Loaded '$name'", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        findViewById<Button>(R.id.btn_link_game_profile).setOnClickListener {
+            val name = selectedProfileName()
+            if (name == null) {
+                Toast.makeText(this, "Save or select a profile first", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val currentLinked = store.getLinkedPackageForProfile(name)
+            val lastDetected = store.getLastDetectedGamePackage()
+            val input = EditText(this).apply {
+                hint = "com.example.game"
+                setText(if (currentLinked.isNotEmpty()) currentLinked else lastDetected)
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Link Game Package to '$name'")
+                .setMessage("When Auto-Load is checked, switching to this package loads '$name'.")
+                .setView(input)
+                .setPositiveButton("Link") { _, _ ->
+                    val pkg = input.text.toString().trim()
+                    store.linkPackageToProfile(name, pkg)
+                    updateProfileStatusText()
+                    notifyOverlaySettingsChanged()
+                    Toast.makeText(
+                        this,
+                        if (pkg.isEmpty()) "Unlinked game from '$name'" else "Linked $pkg -> '$name'",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        findViewById<Button>(R.id.btn_delete_profile).setOnClickListener {
+            val name = selectedProfileName() ?: return@setOnClickListener
+            store.deleteNamedProfile(name)
+            refreshProfilesSpinner()
+            Toast.makeText(this, "Deleted '$name'", Toast.LENGTH_SHORT).show()
+        }
+
+        refreshProfilesSpinner(selectName = store.getActiveProfileName())
+    }
+
+    private fun refreshProfilesSpinner(selectName: String? = null) {
+        profileNames = store.listProfileNames()
+        val displayList = if (profileNames.isEmpty()) {
+            listOf("(No saved profiles yet)")
+        } else {
+            profileNames.map { name ->
+                val linked = store.getLinkedPackageForProfile(name)
+                if (linked.isNotEmpty()) "$name  [$linked]" else name
+            }
+        }
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, displayList)
+        profileSpinner.adapter = adapter
+        if (!selectName.isNullOrEmpty() && profileNames.contains(selectName)) {
+            profileSpinner.setSelection(profileNames.indexOf(selectName))
+        }
+        updateProfileStatusText()
+    }
+
+    private fun updateProfileStatusText() {
+        val active = store.getActiveProfileName().ifEmpty { "None" }
+        val lastGame = store.getLastDetectedGamePackage().ifEmpty { "None" }
+        profileGameInfo.text = "Active: $active | Last Game: $lastGame"
+    }
+
     private fun setAllHiddenState(hidden: Boolean) {
         val dm = resources.displayMetrics
         val controls = store.loadControls(dm.widthPixels, dm.heightPixels)
@@ -195,10 +329,22 @@ class MainActivity : AppCompatActivity() {
         if (settingsOpen) populateHideCheckboxes()
     }
 
-    private fun setupSliders() {
+    private fun syncSlidersFromStore() {
         val op = store.getOverlayOpacity()
         opacitySeek.progress = ((op - 0.25f) * 100f).toInt().coerceIn(0, 75)
         opacityLabel.text = "Overlay Opacity: ${(op * 100f).toInt()}%"
+
+        val sens = store.getStickSensitivity()
+        sensitivitySeek.progress = ((sens - 0.25f) * 100f).toInt().coerceIn(0, 225)
+        sensitivityLabel.text = String.format(Locale.US, "Thumbstick Sensitivity: %.2fx", sens)
+
+        val dz = store.getStickDeadzone()
+        deadzoneSeek.progress = (dz * 100f).toInt().coerceIn(0, 45)
+        deadzoneLabel.text = "Thumbstick Deadzone: ${(dz * 100f).toInt()}%"
+    }
+
+    private fun setupSliders() {
+        syncSlidersFromStore()
 
         opacitySeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -212,10 +358,6 @@ class MainActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
         })
 
-        val sens = store.getStickSensitivity()
-        sensitivitySeek.progress = ((sens - 0.25f) * 100f).toInt().coerceIn(0, 225)
-        sensitivityLabel.text = String.format(Locale.US, "Thumbstick Sensitivity: %.2fx", sens)
-
         sensitivitySeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 val value = 0.25f + (progress / 100f)
@@ -227,10 +369,6 @@ class MainActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
             override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
         })
-
-        val dz = store.getStickDeadzone()
-        deadzoneSeek.progress = (dz * 100f).toInt().coerceIn(0, 45)
-        deadzoneLabel.text = "Thumbstick Deadzone: ${(dz * 100f).toInt()}%"
 
         deadzoneSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -281,6 +419,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         refreshStatus()
+        refreshProfilesSpinner(selectName = store.getActiveProfileName())
         if (settingsOpen) populateHideCheckboxes()
     }
 

@@ -1,96 +1,143 @@
 package com.overlaypad
 
-import android.content.Context
-import android.hardware.input.InputManager
+import android.os.InputEvent
 import android.os.SystemClock
-import android.util.Log
 import android.view.InputDevice
-import android.view.InputEvent
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.MotionEvent
-import com.overlaypad.service.IGamepadService
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.lang.reflect.Method
-import kotlin.system.exitProcess
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
-class GamepadUserService() : IGamepadService.Stub() {
+class GamepadUserService : IGamepadService.Stub() {
 
-    constructor(context: Context) : this()
-
-    private var uinputActive = false
+    private var injectTarget: Any? = null
     private var injectMethod: Method? = null
-    private var inputManagerInstance: Any? = null
+    private var statusMessage = "Initializing InputManager..."
 
-    private var axisX = 0f
-    private var axisY = 0f
-    private var axisZ = 0f
-    private var axisRz = 0f
-    private var axisLTrigger = 0f
-    private var axisRTrigger = 0f
+    private var axisLx = 0f
+    private var axisLy = 0f
+    private var axisRx = 0f
+    private var axisRy = 0f
+    private var axisLt = 0f
+    private var axisRt = 0f
     private var axisHatX = 0f
     private var axisHatY = 0f
 
+    private var metaState = 0
+    private val heldKeys = HashSet<Int>()
+
+    private val motionExecutor = Executors.newSingleThreadScheduledExecutor()
+    private var motionTicker: ScheduledFuture<*>? = null
+
     init {
-        try {
-            System.loadLibrary("uinputpad")
-        } catch (t: Throwable) {
-            Log.e(TAG, "Failed to load libuinputpad.so", t)
-        }
-        initInputInjector()
+        initInputManager()
+        startMotionTicker()
     }
 
-    private fun initInputInjector() {
+    private fun initInputManager() {
         try {
-            val imGlobalClass = Class.forName("android.hardware.input.InputManagerGlobal")
-            val getInstance = imGlobalClass.getMethod("getInstance")
-            inputManagerInstance = getInstance.invoke(null)
-            injectMethod = imGlobalClass.getMethod(
+            val imgClass = Class.forName("android.hardware.input.InputManagerGlobal")
+            val getInstance = imgClass.getMethod("getInstance")
+            val instance = getInstance.invoke(null)
+            val method = imgClass.getMethod(
                 "injectInputEvent",
                 InputEvent::class.java,
                 Int::class.javaPrimitiveType
             )
-            Log.i(TAG, "Initialized InputManagerGlobal injector")
+            injectTarget = instance
+            injectMethod = method
+            statusMessage = "Gamepad backend active"
         } catch (t: Throwable) {
             try {
-                val getInstance = InputManager::class.java.getMethod("getInstance")
-                inputManagerInstance = getInstance.invoke(null)
-                injectMethod = InputManager::class.java.getMethod(
+                val imClass = Class.forName("android.hardware.input.InputManager")
+                val getInstance = imClass.getMethod("getInstance")
+                val instance = getInstance.invoke(null)
+                val method = imClass.getMethod(
                     "injectInputEvent",
                     InputEvent::class.java,
                     Int::class.javaPrimitiveType
                 )
-                Log.i(TAG, "Initialized InputManager injector")
+                injectTarget = instance
+                injectMethod = method
+                statusMessage = "Gamepad backend active"
             } catch (t2: Throwable) {
-                Log.e(TAG, "Failed to initialize InputManager injector", t2)
+                statusMessage = "InputManager reflection failed: ${t2.message}"
             }
         }
     }
 
-    override fun initGamepad(deviceName: String, vendorId: Int, productId: Int): Boolean {
-        uinputActive = try {
-            nativeInitGamepad(deviceName, vendorId, productId)
-        } catch (_: Throwable) {
-            false
+    private fun hasActiveAxes(): Boolean {
+        return abs(axisLx) > 0.001f ||
+            abs(axisLy) > 0.001f ||
+            abs(axisRx) > 0.001f ||
+            abs(axisRy) > 0.001f ||
+            axisLt > 0.001f ||
+            axisRt > 0.001f ||
+            abs(axisHatX) > 0.001f ||
+            abs(axisHatY) > 0.001f
+    }
+
+    private fun startMotionTicker() {
+        motionTicker = motionExecutor.scheduleAtFixedRate({
+            try {
+                if (hasActiveAxes()) {
+                    emitMotionSnapshot()
+                }
+            } catch (_: Throwable) {
+            }
+        }, 16L, 16L, TimeUnit.MILLISECONDS)
+    }
+
+    private fun linuxToAndroidKeyCode(linuxCode: Int): Int {
+        return when (linuxCode) {
+            304 -> KeyEvent.KEYCODE_BUTTON_A
+            305 -> KeyEvent.KEYCODE_BUTTON_B
+            307 -> KeyEvent.KEYCODE_BUTTON_X
+            308 -> KeyEvent.KEYCODE_BUTTON_Y
+            310 -> KeyEvent.KEYCODE_BUTTON_L1
+            311 -> KeyEvent.KEYCODE_BUTTON_R1
+            312 -> KeyEvent.KEYCODE_BUTTON_L2
+            313 -> KeyEvent.KEYCODE_BUTTON_R2
+            314 -> KeyEvent.KEYCODE_BUTTON_SELECT
+            315 -> KeyEvent.KEYCODE_BUTTON_START
+            316 -> KeyEvent.KEYCODE_BUTTON_MODE
+            317 -> KeyEvent.KEYCODE_BUTTON_THUMBL
+            318 -> KeyEvent.KEYCODE_BUTTON_THUMBR
+            544 -> KeyEvent.KEYCODE_DPAD_UP
+            545 -> KeyEvent.KEYCODE_DPAD_DOWN
+            546 -> KeyEvent.KEYCODE_DPAD_LEFT
+            547 -> KeyEvent.KEYCODE_DPAD_RIGHT
+            else -> KeyEvent.KEYCODE_UNKNOWN
         }
-        if (uinputActive) {
-            Log.i(TAG, "Using /dev/uinput backend")
-            return true
+    }
+
+    private fun inject(event: InputEvent) {
+        val target = injectTarget ?: return
+        val method = injectMethod ?: return
+        try {
+            method.invoke(target, event, 0)
+        } catch (t: Throwable) {
+            statusMessage = "Inject error: ${t.cause?.message ?: t.message}"
         }
-        if (injectMethod != null && inputManagerInstance != null) {
-            Log.i(TAG, "/dev/uinput unavailable; using InputManager injection fallback")
-            return true
-        }
-        return false
     }
 
     override fun setButton(linuxKeyCode: Int, pressed: Boolean) {
-        if (uinputActive) {
-            nativeSetButton(linuxKeyCode, pressed)
-            return
-        }
-        val androidKeyCode = mapLinuxToAndroidKeyCode(linuxKeyCode) ?: return
+        val keyCode = linuxToAndroidKeyCode(linuxKeyCode)
+        if (keyCode == KeyEvent.KEYCODE_UNKNOWN) return
         val now = SystemClock.uptimeMillis()
         val action = if (pressed) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP
-        val source = if (linuxKeyCode in 544..547) {
+        if (pressed) {
+            heldKeys.add(keyCode)
+        } else {
+            heldKeys.remove(keyCode)
+        }
+        val source = if (keyCode in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_RIGHT) {
             InputDevice.SOURCE_DPAD or InputDevice.SOURCE_GAMEPAD
         } else {
             InputDevice.SOURCE_GAMEPAD
@@ -99,37 +146,32 @@ class GamepadUserService() : IGamepadService.Stub() {
             now,
             now,
             action,
-            androidKeyCode,
+            keyCode,
             0,
-            0,
-            0,
+            metaState,
+            KeyCharacterMap.VIRTUAL_KEYBOARD,
             linuxKeyCode,
-            0,
+            KeyEvent.FLAG_FROM_SYSTEM,
             source
         )
         inject(event)
     }
 
     override fun setAbsAxis(linuxAbsCode: Int, value: Int) {
-        if (uinputActive) {
-            nativeSetAbsAxis(linuxAbsCode, value)
-            return
-        }
         when (linuxAbsCode) {
-            0x00 -> axisX = (value / 32767f).coerceIn(-1f, 1f)
-            0x01 -> axisY = (value / 32767f).coerceIn(-1f, 1f)
-            0x03 -> axisZ = (value / 32767f).coerceIn(-1f, 1f)
-            0x04 -> axisRz = (value / 32767f).coerceIn(-1f, 1f)
-            0x02 -> axisLTrigger = (value / 255f).coerceIn(0f, 1f)
-            0x05 -> axisRTrigger = (value / 255f).coerceIn(0f, 1f)
+            0x00 -> axisLx = (value / 32767f).coerceIn(-1f, 1f)
+            0x01 -> axisLy = (value / 32767f).coerceIn(-1f, 1f)
+            0x03 -> axisRx = (value / 32767f).coerceIn(-1f, 1f)
+            0x04 -> axisRy = (value / 32767f).coerceIn(-1f, 1f)
+            0x02 -> axisLt = (value / 255f).coerceIn(0f, 1f)
+            0x05 -> axisRt = (value / 255f).coerceIn(0f, 1f)
             0x10 -> axisHatX = value.coerceIn(-1, 1).toFloat()
             0x11 -> axisHatY = value.coerceIn(-1, 1).toFloat()
-            else -> return
         }
-        injectJoystickMotion()
+        emitMotionSnapshot()
     }
 
-    private fun injectJoystickMotion() {
+    private fun emitMotionSnapshot() {
         val now = SystemClock.uptimeMillis()
         val props = arrayOf(
             MotionEvent.PointerProperties().apply {
@@ -139,91 +181,89 @@ class GamepadUserService() : IGamepadService.Stub() {
         )
         val coords = arrayOf(
             MotionEvent.PointerCoords().apply {
-                x = axisX
-                y = axisY
-                setAxisValue(MotionEvent.AXIS_X, axisX)
-                setAxisValue(MotionEvent.AXIS_Y, axisY)
-                setAxisValue(MotionEvent.AXIS_Z, axisZ)
-                setAxisValue(MotionEvent.AXIS_RZ, axisRz)
-                setAxisValue(MotionEvent.AXIS_LTRIGGER, axisLTrigger)
-                setAxisValue(MotionEvent.AXIS_RTRIGGER, axisRTrigger)
-                setAxisValue(MotionEvent.AXIS_BRAKE, axisLTrigger)
-                setAxisValue(MotionEvent.AXIS_GAS, axisRTrigger)
+                x = axisLx
+                y = axisLy
+                setAxisValue(MotionEvent.AXIS_X, axisLx)
+                setAxisValue(MotionEvent.AXIS_Y, axisLy)
+                setAxisValue(MotionEvent.AXIS_Z, axisRx)
+                setAxisValue(MotionEvent.AXIS_RZ, axisRy)
+                setAxisValue(MotionEvent.AXIS_RX, axisRx)
+                setAxisValue(MotionEvent.AXIS_RY, axisRy)
+                setAxisValue(MotionEvent.AXIS_LTRIGGER, axisLt)
+                setAxisValue(MotionEvent.AXIS_RTRIGGER, axisRt)
+                setAxisValue(MotionEvent.AXIS_BRAKE, axisLt)
+                setAxisValue(MotionEvent.AXIS_GAS, axisRt)
                 setAxisValue(MotionEvent.AXIS_HAT_X, axisHatX)
                 setAxisValue(MotionEvent.AXIS_HAT_Y, axisHatY)
             }
         )
-        val event = MotionEvent.obtain(
+        val motion = MotionEvent.obtain(
             now,
             now,
             MotionEvent.ACTION_MOVE,
             1,
             props,
             coords,
+            metaState,
             0,
+            1.0f,
+            1.0f,
+            KeyCharacterMap.VIRTUAL_KEYBOARD,
             0,
-            1f,
-            1f,
-            0,
-            0,
-            InputDevice.SOURCE_JOYSTICK,
+            InputDevice.SOURCE_JOYSTICK or InputDevice.SOURCE_GAMEPAD,
             0
         )
-        try {
+        inject(motion)
+        motion.recycle()
+    }
+
+    override fun resetAll() {
+        axisLx = 0f
+        axisLy = 0f
+        axisRx = 0f
+        axisRy = 0f
+        axisLt = 0f
+        axisRt = 0f
+        axisHatX = 0f
+        axisHatY = 0f
+        val now = SystemClock.uptimeMillis()
+        for (keyCode in heldKeys.toList()) {
+            val event = KeyEvent(
+                now,
+                now,
+                KeyEvent.ACTION_UP,
+                keyCode,
+                0,
+                0,
+                KeyCharacterMap.VIRTUAL_KEYBOARD,
+                0,
+                KeyEvent.FLAG_FROM_SYSTEM,
+                InputDevice.SOURCE_GAMEPAD
+            )
             inject(event)
-        } finally {
-            event.recycle()
         }
+        heldKeys.clear()
+        emitMotionSnapshot()
     }
 
-    private fun inject(event: InputEvent) {
-        try {
-            injectMethod?.invoke(inputManagerInstance, event, 0)
-        } catch (t: Throwable) {
-            Log.e(TAG, "injectInputEvent failed", t)
-        }
-    }
+    override fun getStatus(): String = statusMessage
 
-    private fun mapLinuxToAndroidKeyCode(code: Int): Int? = when (code) {
-        304 -> KeyEvent.KEYCODE_BUTTON_A
-        305 -> KeyEvent.KEYCODE_BUTTON_B
-        307 -> KeyEvent.KEYCODE_BUTTON_X
-        308 -> KeyEvent.KEYCODE_BUTTON_Y
-        310 -> KeyEvent.KEYCODE_BUTTON_L1
-        311 -> KeyEvent.KEYCODE_BUTTON_R1
-        312 -> KeyEvent.KEYCODE_BUTTON_L2
-        313 -> KeyEvent.KEYCODE_BUTTON_R2
-        314 -> KeyEvent.KEYCODE_BUTTON_SELECT
-        315 -> KeyEvent.KEYCODE_BUTTON_START
-        316 -> KeyEvent.KEYCODE_BUTTON_MODE
-        317 -> KeyEvent.KEYCODE_BUTTON_THUMBL
-        318 -> KeyEvent.KEYCODE_BUTTON_THUMBR
-        544 -> KeyEvent.KEYCODE_DPAD_UP
-        545 -> KeyEvent.KEYCODE_DPAD_DOWN
-        546 -> KeyEvent.KEYCODE_DPAD_LEFT
-        547 -> KeyEvent.KEYCODE_DPAD_RIGHT
-        else -> null
-    }
-
-    override fun closeGamepad() {
-        uinputActive = false
-        try {
-            nativeCloseGamepad()
+    override fun getForegroundPackage(): String {
+        return try {
+            val proc = Runtime.getRuntime().exec(arrayOf("sh", "-c", "dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | head -n 1"))
+            val line = BufferedReader(InputStreamReader(proc.inputStream)).use { it.readLine() } ?: ""
+            proc.waitFor()
+            val match = Regex("([a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)+)/").find(line)
+            match?.groupValues?.getOrNull(1) ?: ""
         } catch (_: Throwable) {
+            ""
         }
     }
 
     override fun destroy() {
-        closeGamepad()
-        exitProcess(0)
-    }
-
-    private external fun nativeInitGamepad(deviceName: String, vendorId: Int, productId: Int): Boolean
-    private external fun nativeSetButton(linuxKeyCode: Int, pressed: Boolean)
-    private external fun nativeSetAbsAxis(linuxAbsCode: Int, value: Int)
-    private external fun nativeCloseGamepad()
-
-    companion object {
-        private const val TAG = "GamepadUserService"
+        motionTicker?.cancel(true)
+        motionExecutor.shutdownNow()
+        resetAll()
+        System.exit(0)
     }
 }

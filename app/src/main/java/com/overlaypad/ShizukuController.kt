@@ -4,30 +4,27 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
-import android.util.Log
-import com.overlaypad.service.IGamepadService
 import rikka.shizuku.Shizuku
 
 object ShizukuController {
-
-    const val REQUEST_CODE_SHIZUKU = 1001
-    private const val TAG = "ShizukuController"
-
-    @Volatile
     var service: IGamepadService? = null
         private set
 
-    @Volatile
-    var lastStatus: String = "Not bound"
+    var lastStatus: String = "Not connected"
         private set
 
     private var connection: ServiceConnection? = null
-    private var bindingInProgress = false
-    private val callbacks = mutableListOf<(Boolean, String) -> Unit>()
-    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private fun userServiceArgs(context: Context): Shizuku.UserServiceArgs {
+        return Shizuku.UserServiceArgs(
+            ComponentName(context.packageName, GamepadUserService::class.java.name)
+        )
+            .daemon(false)
+            .processNameSuffix("gamepad")
+            .debuggable(false)
+            .version(1)
+    }
 
     fun isShizukuAvailable(): Boolean {
         return try {
@@ -39,126 +36,83 @@ object ShizukuController {
 
     fun hasPermission(): Boolean {
         return try {
-            if (!Shizuku.pingBinder()) return false
-            if (Shizuku.isPreV11()) return true
-            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+            isShizukuAvailable() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
         } catch (_: Throwable) {
             false
         }
     }
 
-    fun requestPermission() {
-        if (isShizukuAvailable() && !Shizuku.isPreV11()) {
-            Shizuku.requestPermission(REQUEST_CODE_SHIZUKU)
+    fun requestPermission(requestCode: Int = 1001) {
+        if (!isShizukuAvailable()) {
+            lastStatus = "Shizuku service not running"
+            return
         }
+        if (Shizuku.isPreV11()) {
+            lastStatus = "Shizuku v11+ required"
+            return
+        }
+        Shizuku.requestPermission(requestCode)
     }
 
-    fun bindUserService(context: Context, onResult: ((Boolean, String) -> Unit)? = null) {
-        if (onResult != null) {
-            synchronized(callbacks) {
-                callbacks.add(onResult)
-            }
+    fun bindUserService(context: Context, onReady: ((Boolean, String) -> Unit)? = null) {
+        if (!hasPermission()) {
+            lastStatus = "Shizuku permission missing"
+            onReady?.invoke(false, lastStatus)
+            return
         }
-
-        val currentService = service
-        if (currentService != null) {
-            val ok = try {
-                currentService.initGamepad("Xbox Wireless Controller", 0x045e, 0x02e0)
-            } catch (t: Throwable) {
-                service = null
-                false
+        if (service != null) {
+            lastStatus = try {
+                service?.status ?: "Connected"
+            } catch (_: Throwable) {
+                "Connected"
             }
-            if (ok) {
-                lastStatus = "Gamepad backend active"
-                notifyCallbacks(true, lastStatus)
-                return
-            }
+            onReady?.invoke(true, lastStatus)
+            return
         }
-
-        if (bindingInProgress) return
-        bindingInProgress = true
-        lastStatus = "Binding Shizuku service..."
 
         val conn = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-                bindingInProgress = false
-                val iface = IGamepadService.Stub.asInterface(binder)
-                service = iface
-                mainHandler.postDelayed({
-                    var errDetail = ""
-                    val ok = try {
-                        iface?.initGamepad("Xbox Wireless Controller", 0x045e, 0x02e0) ?: false
+                if (binder != null && binder.pingBinder()) {
+                    service = IGamepadService.Stub.asInterface(binder)
+                    lastStatus = try {
+                        service?.status ?: "Gamepad service bound"
                     } catch (t: Throwable) {
-                        errDetail = t.javaClass.simpleName + ": " + (t.message ?: "")
-                        Log.e(TAG, "initGamepad failed", t)
-                        false
+                        "Bound (${t.message})"
                     }
-                    lastStatus = if (ok) {
-                        "Gamepad backend active"
-                    } else {
-                        "Bound, init failed ($errDetail)"
-                    }
-                    notifyCallbacks(ok, lastStatus)
-                }, 150L)
+                    onReady?.invoke(true, lastStatus)
+                } else {
+                    lastStatus = "Invalid binder"
+                    onReady?.invoke(false, lastStatus)
+                }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
-                bindingInProgress = false
                 service = null
-                lastStatus = "Service disconnected"
+                lastStatus = "UserService disconnected"
             }
         }
         connection = conn
-
-        val args = Shizuku.UserServiceArgs(
-            ComponentName(context.applicationContext.packageName, GamepadUserService::class.java.name)
-        )
-            .daemon(false)
-            .processNameSuffix("uinput_service")
-            .tag("overlaypad_uinput")
-            .version(2)
-
         try {
-            Shizuku.bindUserService(args, conn)
+            Shizuku.bindUserService(userServiceArgs(context), conn)
         } catch (t: Throwable) {
-            bindingInProgress = false
-            lastStatus = "bindUserService error: ${t.javaClass.simpleName}"
-            Log.e(TAG, "bindUserService failed", t)
-            notifyCallbacks(false, lastStatus)
-        }
-    }
-
-    private fun notifyCallbacks(ok: Boolean, status: String) {
-        val snapshot: List<(Boolean, String) -> Unit>
-        synchronized(callbacks) {
-            snapshot = callbacks.toList()
-            callbacks.clear()
-        }
-        for (cb in snapshot) {
-            cb(ok, status)
+            lastStatus = "Bind failed: ${t.message}"
+            onReady?.invoke(false, lastStatus)
         }
     }
 
     fun unbindUserService(context: Context) {
-        val conn = connection ?: return
         try {
-            service?.closeGamepad()
+            service?.resetAll()
         } catch (_: Throwable) {
         }
-        val args = Shizuku.UserServiceArgs(
-            ComponentName(context.applicationContext.packageName, GamepadUserService::class.java.name)
-        )
-            .daemon(false)
-            .processNameSuffix("uinput_service")
-            .tag("overlaypad_uinput")
-            .version(2)
-        try {
-            Shizuku.unbindUserService(args, conn, true)
-        } catch (_: Throwable) {
+        connection?.let {
+            try {
+                Shizuku.unbindUserService(userServiceArgs(context), it, true)
+            } catch (_: Throwable) {
+            }
         }
-        service = null
         connection = null
-        bindingInProgress = false
-        lastStatus = "Unbound"
+        service = null
+        lastStatus = "Disconnected"
     }
 }

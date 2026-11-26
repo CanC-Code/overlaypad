@@ -10,7 +10,9 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -35,6 +37,16 @@ class OverlayService : Service() {
     private var isCollapsed = false
     private var editMode = false
 
+    private val handler = Handler(Looper.getMainLooper())
+    private var lastObservedPackage = ""
+
+    private val gameWatcherRunnable = object : Runnable {
+        override fun run() {
+            checkForegroundGameAndAutoLoad()
+            handler.postDelayed(this, 1600L)
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -43,6 +55,35 @@ class OverlayService : Service() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         store = OverlayLayoutStore(this)
         showExpandedOverlay()
+        handler.postDelayed(gameWatcherRunnable, 1200L)
+    }
+
+    private fun checkForegroundGameAndAutoLoad() {
+        val svc = ShizukuController.service ?: return
+        val pkg = try {
+            svc.foregroundPackage ?: ""
+        } catch (_: Throwable) {
+            ""
+        }
+        if (pkg.isBlank() || pkg == packageName || pkg == "com.android.systemui") return
+
+        if (pkg != store.getLastDetectedGamePackage()) {
+            store.setLastDetectedGamePackage(pkg)
+        }
+
+        if (!store.isAutoLoadPerGameEnabled() || editMode) return
+        if (pkg == lastObservedPackage) return
+        lastObservedPackage = pkg
+
+        val matchedProfile = store.findProfileForPackage(pkg) ?: return
+        if (matchedProfile != store.getActiveProfileName()) {
+            if (store.loadNamedProfile(matchedProfile)) {
+                overlayView?.overlayOpacity = store.getOverlayOpacity()
+                overlayView?.stickSensitivity = store.getStickSensitivity()
+                overlayView?.stickDeadzone = store.getStickDeadzone()
+                overlayView?.reloadControls()
+            }
+        }
     }
 
     private fun overlayType(): Int {
@@ -412,6 +453,7 @@ class OverlayService : Service() {
                 overlayView?.releaseAllInputs()
             }
             ACTION_UPDATE_SETTINGS -> {
+                lastObservedPackage = ""
                 overlayView?.overlayOpacity = store.getOverlayOpacity()
                 overlayView?.stickSensitivity = store.getStickSensitivity()
                 overlayView?.stickDeadzone = store.getStickDeadzone()
@@ -433,6 +475,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(gameWatcherRunnable)
         editMode = false
         removeInspector()
         overlayView?.releaseAllInputs()
