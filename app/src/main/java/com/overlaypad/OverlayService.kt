@@ -239,6 +239,14 @@ class OverlayService : Service() {
             setPadding(0, 18, 0, 0)
         }
 
+        val releaseBtn = Button(this).apply {
+            text = "Release All"
+            setOnClickListener {
+                overlayView?.releaseAllInputs()
+            }
+        }
+        btnRow.addView(releaseBtn)
+
         val showAllBtn = Button(this).apply {
             text = "Unhide All"
             setOnClickListener {
@@ -400,6 +408,9 @@ class OverlayService : Service() {
             ACTION_EXPAND_OVERLAY -> {
                 showExpandedOverlay()
             }
+            ACTION_RELEASE_ALL -> {
+                overlayView?.releaseAllInputs()
+            }
             ACTION_UPDATE_SETTINGS -> {
                 overlayView?.overlayOpacity = store.getOverlayOpacity()
                 overlayView?.stickSensitivity = store.getStickSensitivity()
@@ -460,6 +471,7 @@ class OverlayService : Service() {
         const val ACTION_SET_EDIT_MODE = "com.overlaypad.ACTION_SET_EDIT_MODE"
         const val ACTION_COLLAPSE_OVERLAY = "com.overlaypad.ACTION_COLLAPSE_OVERLAY"
         const val ACTION_EXPAND_OVERLAY = "com.overlaypad.ACTION_EXPAND_OVERLAY"
+        const val ACTION_RELEASE_ALL = "com.overlaypad.ACTION_RELEASE_ALL"
         const val ACTION_UPDATE_SETTINGS = "com.overlaypad.ACTION_UPDATE_SETTINGS"
         const val ACTION_RESET_LAYOUT = "com.overlaypad.ACTION_RESET_LAYOUT"
         const val ACTION_STOP_OVERLAY = "com.overlaypad.ACTION_STOP_OVERLAY"

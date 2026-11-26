@@ -9,7 +9,6 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.view.MotionEvent
 import android.view.View
-import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -460,29 +459,32 @@ class OverlayPadView(
         return false
     }
 
-    private fun applyDeadzoneAndSensitivity(rawNorm: Float): Float {
-        val mag = abs(rawNorm)
-        if (mag <= stickDeadzone) return 0f
-        val sign = if (rawNorm >= 0f) 1f else -1f
-        val rescaled = ((mag - stickDeadzone) / max(0.001f, 1f - stickDeadzone)).coerceIn(0f, 1f)
-        return (sign * rescaled * stickSensitivity).coerceIn(-1f, 1f)
-    }
-
     private fun updateStick(c: PadControl, touchX: Float, touchY: Float) {
         val cx = centerX(c)
         val cy = centerY(c)
         val maxR = max(1f, c.radiusPx * 0.75f)
         var dx = touchX - cx
         var dy = touchY - cy
-        val dist = hypot(dx, dy)
-        if (dist > maxR) {
-            dx = dx / dist * maxR
-            dy = dy / dist * maxR
+        val radialDist = hypot(dx, dy)
+        if (radialDist > maxR) {
+            dx = dx / radialDist * maxR
+            dy = dy / radialDist * maxR
         }
         stickThumbOffset[c.id] = dx to dy
 
-        val outX = applyDeadzoneAndSensitivity((dx / maxR).coerceIn(-1f, 1f))
-        val outY = applyDeadzoneAndSensitivity((dy / maxR).coerceIn(-1f, 1f))
+        val rawMag = (hypot(dx, dy) / maxR).coerceIn(0f, 1f)
+        val scaledMag = if (rawMag <= stickDeadzone) {
+            0f
+        } else {
+            val rescaled = ((rawMag - stickDeadzone) / max(0.001f, 1f - stickDeadzone)).coerceIn(0f, 1f)
+            (rescaled * stickSensitivity).coerceIn(0f, 1f)
+        }
+        val normMag = hypot(dx, dy)
+        val dirX = if (normMag > 0.0001f) dx / normMag else 0f
+        val dirY = if (normMag > 0.0001f) dy / normMag else 0f
+        val outX = (dirX * scaledMag).coerceIn(-1f, 1f)
+        val outY = (dirY * scaledMag).coerceIn(-1f, 1f)
+
         val axisX = (outX * 32767f).toInt().coerceIn(-32768, 32767)
         val axisY = (outY * 32767f).toInt().coerceIn(-32768, 32767)
         onAxisEvent(c.linuxCodePrimary, axisX)

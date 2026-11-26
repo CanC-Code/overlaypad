@@ -223,29 +223,40 @@
                 android:orientation="horizontal">
 
                 <Button
-                    android:id="@+id/btn_reset_layout"
+                    android:id="@+id/btn_release_all"
                     android:layout_width="0dp"
                     android:layout_height="44dp"
                     android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_secondary"
+                    android:text="Release All Inputs"
+                    android:textAllCaps="false"
+                    android:textColor="#38BDF8"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/btn_reset_layout"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
                     android:text="Reset Positions"
                     android:textAllCaps="false"
                     android:textColor="#CBD5E1"
                     android:textSize="13sp" />
-
-                <Button
-                    android:id="@+id/btn_stop_overlay"
-                    android:layout_width="0dp"
-                    android:layout_height="44dp"
-                    android:layout_marginStart="6dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_btn_danger"
-                    android:text="Stop Overlay"
-                    android:textAllCaps="false"
-                    android:textColor="#FDA4AF"
-                    android:textSize="13sp" />
             </LinearLayout>
+
+            <Button
+                android:id="@+id/btn_stop_overlay"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_btn_danger"
+                android:text="Stop Overlay Service"
+                android:textAllCaps="false"
+                android:textColor="#FDA4AF"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <!-- Tuning & Visibility Card -->

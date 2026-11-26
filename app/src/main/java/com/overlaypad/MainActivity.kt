@@ -134,6 +134,15 @@ class MainActivity : AppCompatActivity() {
             startService(intent)
         }
 
+        findViewById<Button>(R.id.btn_release_all).setOnClickListener {
+            startService(
+                Intent(this, OverlayService::class.java).apply {
+                    action = OverlayService.ACTION_RELEASE_ALL
+                }
+            )
+            Toast.makeText(this, "Released all gamepad inputs", Toast.LENGTH_SHORT).show()
+        }
+
         settingsToggleButton.setOnClickListener {
             settingsOpen = !settingsOpen
             settingsToggleButton.text = if (settingsOpen) "Collapse" else "Expand"

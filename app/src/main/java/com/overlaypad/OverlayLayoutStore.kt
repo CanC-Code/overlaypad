@@ -90,36 +90,36 @@ class OverlayLayoutStore(context: Context) {
     fun defaultControls(screenWidth: Int, screenHeight: Int): MutableList<PadControl> {
         val base = minOf(screenWidth, screenHeight).toFloat()
         val isPortrait = screenHeight > screenWidth
-        val btnR = if (isPortrait) base * 0.062f else base * 0.056f
-        val smallBtnR = if (isPortrait) base * 0.048f else base * 0.044f
-        val stickR = if (isPortrait) base * 0.135f else base * 0.125f
+        val btnR = if (isPortrait) base * 0.056f else base * 0.056f
+        val smallBtnR = if (isPortrait) base * 0.044f else base * 0.044f
+        val stickR = if (isPortrait) base * 0.125f else base * 0.125f
 
         return if (isPortrait) {
             mutableListOf(
-                PadControl("ls", "LS", true, 0x00, 0x01, 0.22f, 0.78f, stickR, false, false, null),
-                PadControl("rs", "RS", true, 0x03, 0x04, 0.76f, 0.78f, stickR * 0.92f, false, false, null),
+                PadControl("ls", "LS", true, 0x00, 0x01, 0.19f, 0.81f, stickR, false, false, null),
+                PadControl("rs", "RS", true, 0x03, 0x04, 0.81f, 0.81f, stickR * 0.92f, false, false, null),
 
-                PadControl("l3", "L3", false, 317, 0, 0.36f, 0.88f, smallBtnR, false, false, "l3"),
-                PadControl("r3", "R3", false, 318, 0, 0.62f, 0.88f, smallBtnR, false, false, "r3"),
+                PadControl("l3", "L3", false, 317, 0, 0.34f, 0.89f, smallBtnR, false, false, "l3"),
+                PadControl("r3", "R3", false, 318, 0, 0.66f, 0.89f, smallBtnR, false, false, "r3"),
 
-                PadControl("a", "A", false, 304, 0, 0.78f, 0.63f, btnR, false, false, "a"),
-                PadControl("b", "B", false, 305, 0, 0.90f, 0.55f, btnR, false, false, "b"),
-                PadControl("x", "X", false, 307, 0, 0.66f, 0.55f, btnR, false, false, "x"),
-                PadControl("y", "Y", false, 308, 0, 0.78f, 0.47f, btnR, false, false, "y"),
+                PadControl("a", "A", false, 304, 0, 0.82f, 0.63f, btnR, false, false, "a"),
+                PadControl("b", "B", false, 305, 0, 0.91f, 0.55f, btnR, false, false, "b"),
+                PadControl("x", "X", false, 307, 0, 0.73f, 0.55f, btnR, false, false, "x"),
+                PadControl("y", "Y", false, 308, 0, 0.82f, 0.47f, btnR, false, false, "y"),
 
-                PadControl("dpad_u", "UP", false, 544, 0, 0.22f, 0.53f, smallBtnR * 1.05f, false, false, "dpad_u"),
-                PadControl("dpad_d", "DN", false, 545, 0, 0.22f, 0.67f, smallBtnR * 1.05f, false, false, "dpad_d"),
-                PadControl("dpad_l", "LEFT", false, 546, 0, 0.11f, 0.60f, smallBtnR * 1.05f, false, false, "dpad_l"),
-                PadControl("dpad_r", "RIGHT", false, 547, 0, 0.33f, 0.60f, smallBtnR * 1.05f, false, false, "dpad_r"),
+                PadControl("dpad_u", "UP", false, 544, 0, 0.19f, 0.55f, smallBtnR, false, false, "dpad_u"),
+                PadControl("dpad_d", "DN", false, 545, 0, 0.19f, 0.67f, smallBtnR, false, false, "dpad_d"),
+                PadControl("dpad_l", "LEFT", false, 546, 0, 0.10f, 0.61f, smallBtnR, false, false, "dpad_l"),
+                PadControl("dpad_r", "RIGHT", false, 547, 0, 0.28f, 0.61f, smallBtnR, false, false, "dpad_r"),
 
-                PadControl("lb", "LB", false, 310, 0, 0.14f, 0.34f, btnR * 0.92f, false, false, "lb"),
-                PadControl("rb", "RB", false, 311, 0, 0.86f, 0.34f, btnR * 0.92f, false, false, "rb"),
-                PadControl("lt", "LT", false, 312, 0x02, 0.27f, 0.34f, btnR * 0.92f, false, false, "lt"),
-                PadControl("rt", "RT", false, 313, 0x05, 0.73f, 0.34f, btnR * 0.92f, false, false, "rt"),
+                PadControl("lb", "LB", false, 310, 0, 0.13f, 0.42f, btnR * 0.90f, false, false, "lb"),
+                PadControl("rb", "RB", false, 311, 0, 0.87f, 0.34f, btnR * 0.90f, false, false, "rb"),
+                PadControl("lt", "LT", false, 312, 0x02, 0.25f, 0.42f, btnR * 0.90f, false, false, "lt"),
+                PadControl("rt", "RT", false, 313, 0x05, 0.75f, 0.34f, btnR * 0.90f, false, false, "rt"),
 
-                PadControl("select", "BACK", false, 314, 0, 0.35f, 0.24f, smallBtnR, false, false, "select"),
-                PadControl("guide", "HOME", false, 316, 0, 0.50f, 0.24f, smallBtnR, false, false, "guide"),
-                PadControl("start", "START", false, 315, 0, 0.65f, 0.24f, smallBtnR, false, false, "start")
+                PadControl("select", "BACK", false, 314, 0, 0.36f, 0.94f, smallBtnR * 0.92f, false, false, "select"),
+                PadControl("guide", "HOME", false, 316, 0, 0.50f, 0.94f, smallBtnR * 0.92f, false, false, "guide"),
+                PadControl("start", "START", false, 315, 0, 0.64f, 0.94f, smallBtnR * 0.92f, false, false, "start")
             )
         } else {
             mutableListOf(
