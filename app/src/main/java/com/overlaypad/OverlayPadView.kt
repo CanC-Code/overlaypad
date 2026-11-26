@@ -4,7 +4,9 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RadialGradient
 import android.graphics.RectF
+import android.graphics.Shader
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
@@ -33,6 +35,13 @@ class OverlayPadView(
                 editMovedPointers.clear()
                 invalidate()
             }
+        }
+
+    var overlayOpacity: Float = store.getOverlayOpacity()
+        set(value) {
+            field = value.coerceIn(0.25f, 1.0f)
+            store.setOverlayOpacity(field)
+            invalidate()
         }
 
     var stickSensitivity: Float = store.getStickSensitivity()
@@ -71,53 +80,31 @@ class OverlayPadView(
     private var pillDownX = 0f
     private var pillDownY = 0f
 
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val innerBevelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+    }
+    private val crosshairPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+    }
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 4f
-        color = Color.argb(195, 255, 255, 255)
     }
     private val stickyRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 6f
-        color = Color.argb(245, 255, 200, 40)
     }
-    private val hiddenRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-        color = Color.argb(125, 255, 215, 0)
-    }
-    private val hiddenFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = Color.argb(38, 120, 120, 140)
-    }
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = Color.argb(92, 40, 140, 255)
-    }
-    private val activeFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = Color.argb(175, 80, 220, 140)
-    }
-    private val latchedFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = Color.argb(190, 235, 145, 25)
-    }
-    private val editPillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = Color.argb(220, 45, 52, 68)
-    }
-    private val editActivePillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = Color.argb(235, 210, 155, 20)
-    }
-    private val hidePillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = Color.argb(220, 30, 85, 165)
-    }
+    private val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        textSize = 32f
         textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+
+    private fun scaleAlpha(baseAlpha: Int): Int {
+        return (baseAlpha * overlayOpacity).toInt().coerceIn(20, 255)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -516,55 +503,84 @@ class OverlayPadView(
             val labelText = c.displayLabel()
 
             if (c.hidden && editMode) {
-                canvas.drawCircle(cx, cy, c.radiusPx, hiddenFillPaint)
-                canvas.drawCircle(cx, cy, c.radiusPx, hiddenRingPaint)
-                textPaint.color = Color.argb(190, 255, 225, 110)
-                textPaint.textSize = min(24f, max(14f, c.radiusPx * 0.28f))
+                fillPaint.shader = null
+                fillPaint.color = Color.argb(45, 100, 116, 139)
+                canvas.drawCircle(cx, cy, c.radiusPx, fillPaint)
+                ringPaint.color = Color.argb(145, 250, 204, 21)
+                canvas.drawCircle(cx, cy, c.radiusPx, ringPaint)
+                textPaint.color = Color.argb(210, 254, 240, 138)
+                textPaint.textSize = min(22f, max(13f, c.radiusPx * 0.27f))
                 canvas.drawText("$labelText [OFF]", cx, cy + textPaint.textSize * 0.35f, textPaint)
                 continue
             }
 
-            val fill = when {
-                isLatched -> latchedFillPaint
-                isTouchPressed -> activeFillPaint
-                else -> fillPaint
+            val (innerColor, outerColor) = when {
+                isLatched -> Color.argb(scaleAlpha(215), 245, 158, 11) to Color.argb(scaleAlpha(140), 180, 83, 9)
+                isTouchPressed -> Color.argb(scaleAlpha(210), 16, 185, 129) to Color.argb(scaleAlpha(135), 5, 150, 105)
+                else -> Color.argb(scaleAlpha(125), 30, 58, 95) to Color.argb(scaleAlpha(85), 15, 23, 42)
             }
-            canvas.drawCircle(cx, cy, c.radiusPx, fill)
+            fillPaint.shader = RadialGradient(
+                cx,
+                cy,
+                max(1f, c.radiusPx),
+                innerColor,
+                outerColor,
+                Shader.TileMode.CLAMP
+            )
+            canvas.drawCircle(cx, cy, c.radiusPx, fillPaint)
+            fillPaint.shader = null
 
-            val stroke = when {
-                isLatched || (c.sticky && !c.isStick) -> stickyRingPaint
-                editMode -> ringPaint.apply { color = Color.YELLOW }
-                else -> ringPaint.apply { color = Color.argb(195, 255, 255, 255) }
+            innerBevelPaint.color = Color.argb(scaleAlpha(75), 255, 255, 255)
+            canvas.drawCircle(cx, cy, max(4f, c.radiusPx - 6f), innerBevelPaint)
+
+            if (isLatched || (c.sticky && !c.isStick)) {
+                stickyRingPaint.color = Color.argb(scaleAlpha(245), 251, 191, 36)
+                canvas.drawCircle(cx, cy, c.radiusPx, stickyRingPaint)
+            } else {
+                ringPaint.color = if (editMode) {
+                    Color.argb(240, 250, 204, 21)
+                } else {
+                    Color.argb(scaleAlpha(200), 226, 232, 240)
+                }
+                canvas.drawCircle(cx, cy, c.radiusPx, ringPaint)
             }
-            canvas.drawCircle(cx, cy, c.radiusPx, stroke)
 
             if (c.isStick) {
+                crosshairPaint.color = Color.argb(scaleAlpha(70), 226, 232, 240)
+                val arm = c.radiusPx * 0.55f
+                canvas.drawLine(cx - arm, cy, cx + arm, cy, crosshairPaint)
+                canvas.drawLine(cx, cy - arm, cx, cy + arm, crosshairPaint)
+
                 val offset = stickThumbOffset[c.id]
                 val tx = cx + (offset?.first ?: 0f)
                 val ty = cy + (offset?.second ?: 0f)
-                canvas.drawCircle(tx, ty, c.radiusPx * 0.36f, ringPaint)
+                fillPaint.color = Color.argb(scaleAlpha(140), 56, 189, 248)
+                canvas.drawCircle(tx, ty, c.radiusPx * 0.35f, fillPaint)
+                ringPaint.color = Color.argb(scaleAlpha(225), 248, 250, 252)
+                canvas.drawCircle(tx, ty, c.radiusPx * 0.35f, ringPaint)
             }
 
-            textPaint.color = Color.WHITE
+            textPaint.color = Color.argb(scaleAlpha(245), 248, 250, 252)
             val scaleFactor = if (labelText.length > 5) 0.27f else 0.38f
             textPaint.textSize = min(32f, max(15f, c.radiusPx * scaleFactor))
             canvas.drawText(labelText, cx, cy + textPaint.textSize * 0.35f, textPaint)
         }
 
-        canvas.drawRoundRect(
-            editPillRect,
-            24f,
-            24f,
-            if (editMode) editActivePillPaint else editPillPaint
-        )
-        ringPaint.color = if (editMode) Color.WHITE else Color.argb(210, 255, 215, 0)
+        pillPaint.color = if (editMode) {
+            Color.argb(240, 234, 179, 8)
+        } else {
+            Color.argb(scaleAlpha(225), 22, 29, 44)
+        }
+        canvas.drawRoundRect(editPillRect, 24f, 24f, pillPaint)
+        ringPaint.color = if (editMode) Color.WHITE else Color.argb(scaleAlpha(220), 250, 204, 21)
         canvas.drawRoundRect(editPillRect, 24f, 24f, ringPaint)
-        textPaint.textSize = 24f
+        textPaint.textSize = 23f
         textPaint.color = if (editMode) Color.BLACK else Color.WHITE
         canvas.drawText(if (editMode) "DONE" else "EDIT", editPillRect.centerX(), editPillRect.centerY() + 8f, textPaint)
 
-        canvas.drawRoundRect(hidePillRect, 24f, 24f, hidePillPaint)
-        ringPaint.color = Color.argb(210, 140, 210, 255)
+        pillPaint.color = Color.argb(scaleAlpha(225), 29, 78, 216)
+        canvas.drawRoundRect(hidePillRect, 24f, 24f, pillPaint)
+        ringPaint.color = Color.argb(scaleAlpha(220), 125, 211, 252)
         canvas.drawRoundRect(hidePillRect, 24f, 24f, ringPaint)
         textPaint.color = Color.WHITE
         canvas.drawText("HIDE", hidePillRect.centerX(), hidePillRect.centerY() + 8f, textPaint)

@@ -1,6 +1,7 @@
 package com.overlaypad
 
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -10,16 +11,22 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import rikka.shizuku.Shizuku
 import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var pillOverlay: TextView
+    private lateinit var pillShizuku: TextView
+    private lateinit var pillPerm: TextView
     private lateinit var statusText: TextView
     private lateinit var editButton: Button
     private lateinit var settingsToggleButton: Button
     private lateinit var settingsPanel: LinearLayout
+    private lateinit var opacityLabel: TextView
+    private lateinit var opacitySeek: SeekBar
     private lateinit var sensitivityLabel: TextView
     private lateinit var sensitivitySeek: SeekBar
     private lateinit var deadzoneLabel: TextView
@@ -44,10 +51,15 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         store = OverlayLayoutStore(this)
+        pillOverlay = findViewById(R.id.pill_overlay)
+        pillShizuku = findViewById(R.id.pill_shizuku)
+        pillPerm = findViewById(R.id.pill_perm)
         statusText = findViewById(R.id.status_text)
         editButton = findViewById(R.id.btn_toggle_edit)
         settingsToggleButton = findViewById(R.id.btn_toggle_settings)
         settingsPanel = findViewById(R.id.settings_panel)
+        opacityLabel = findViewById(R.id.tv_opacity)
+        opacitySeek = findViewById(R.id.seek_opacity)
         sensitivityLabel = findViewById(R.id.tv_sensitivity)
         sensitivitySeek = findViewById(R.id.seek_sensitivity)
         deadzoneLabel = findViewById(R.id.tv_deadzone)
@@ -55,6 +67,15 @@ class MainActivity : AppCompatActivity() {
         hideContainer = findViewById(R.id.hide_controls_container)
 
         Shizuku.addRequestPermissionResultListener(permissionListener)
+
+        findViewById<Button>(R.id.btn_open_shizuku).setOnClickListener {
+            val launchIntent = packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
+            if (launchIntent != null) {
+                startActivity(launchIntent)
+            } else {
+                Toast.makeText(this, "Shizuku app not installed", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         findViewById<Button>(R.id.btn_overlay_perm).setOnClickListener {
             if (!Settings.canDrawOverlays(this)) {
@@ -87,6 +108,8 @@ class MainActivity : AppCompatActivity() {
             }
             if (Settings.canDrawOverlays(this)) {
                 startForegroundService(Intent(this, OverlayService::class.java))
+            } else {
+                Toast.makeText(this, "Grant Overlay Permission first", Toast.LENGTH_SHORT).show()
             }
             refreshStatus()
         }
@@ -113,7 +136,7 @@ class MainActivity : AppCompatActivity() {
 
         settingsToggleButton.setOnClickListener {
             settingsOpen = !settingsOpen
-            settingsToggleButton.text = if (settingsOpen) "Settings: ON" else "Settings: OFF"
+            settingsToggleButton.text = if (settingsOpen) "Collapse" else "Expand"
             settingsPanel.visibility = if (settingsOpen) View.VISIBLE else View.GONE
             if (settingsOpen) {
                 populateHideCheckboxes()
@@ -164,6 +187,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupSliders() {
+        val op = store.getOverlayOpacity()
+        opacitySeek.progress = ((op - 0.25f) * 100f).toInt().coerceIn(0, 75)
+        opacityLabel.text = "Overlay Opacity: ${(op * 100f).toInt()}%"
+
+        opacitySeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                val value = 0.25f + (progress / 100f)
+                opacityLabel.text = "Overlay Opacity: ${(value * 100f).toInt()}%"
+                store.setOverlayOpacity(value)
+                notifyOverlaySettingsChanged()
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+        })
+
         val sens = store.getStickSensitivity()
         sensitivitySeek.progress = ((sens - 0.25f) * 100f).toInt().coerceIn(0, 225)
         sensitivityLabel.text = String.format(Locale.US, "Thumbstick Sensitivity: %.2fx", sens)
@@ -204,6 +243,7 @@ class MainActivity : AppCompatActivity() {
         for (c in controls) {
             val cb = CheckBox(this).apply {
                 text = "Hide ${c.displayLabel()}"
+                setTextColor(Color.parseColor("#E2E8F0"))
                 isChecked = c.hidden
                 setOnCheckedChangeListener { _, isChecked ->
                     val latest = store.loadControls(dm.widthPixels, dm.heightPixels)
@@ -245,6 +285,21 @@ class MainActivity : AppCompatActivity() {
         val shizukuRunning = ShizukuController.isShizukuAvailable()
         val shizukuPerm = ShizukuController.hasPermission()
         val backend = ShizukuController.lastStatus
-        statusText.text = "Overlay=$overlayOk | Shizuku=$shizukuRunning | Perm=$shizukuPerm\nBackend: $backend"
+
+        pillOverlay.text = if (overlayOk) "Overlay: ON" else "Overlay: OFF"
+        pillOverlay.setBackgroundResource(if (overlayOk) R.drawable.bg_pill_ok else R.drawable.bg_pill_warn)
+
+        pillShizuku.text = if (shizukuRunning) "Shizuku: ON" else "Shizuku: OFF"
+        pillShizuku.setBackgroundResource(if (shizukuRunning) R.drawable.bg_pill_ok else R.drawable.bg_pill_warn)
+
+        pillPerm.text = if (shizukuPerm) "Perm: YES" else "Perm: NO"
+        pillPerm.setBackgroundResource(if (shizukuPerm) R.drawable.bg_pill_ok else R.drawable.bg_pill_warn)
+
+        val hint = when {
+            !shizukuRunning -> "Start Shizuku via ADB / Wireless Debugging, then tap Init Gamepad."
+            !shizukuPerm -> "Tap 2. Init Gamepad to grant Shizuku permission."
+            else -> "Backend: $backend"
+        }
+        statusText.text = hint
     }
 }

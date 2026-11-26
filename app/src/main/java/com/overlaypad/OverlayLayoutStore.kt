@@ -244,6 +244,14 @@ class OverlayLayoutStore(context: Context) {
         editor.apply()
     }
 
+    fun getOverlayOpacity(): Float {
+        return prefs.getFloat("overlay_opacity", 0.85f).coerceIn(0.25f, 1.0f)
+    }
+
+    fun setOverlayOpacity(value: Float) {
+        prefs.edit().putFloat("overlay_opacity", value.coerceIn(0.25f, 1.0f)).apply()
+    }
+
     fun getStickSensitivity(): Float {
         return prefs.getFloat("stick_sensitivity", 1.0f).coerceIn(0.25f, 2.5f)
     }

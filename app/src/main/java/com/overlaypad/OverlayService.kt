@@ -59,6 +59,7 @@ class OverlayService : Service() {
         removeInspector()
         if (overlayView != null) {
             overlayView?.editMode = editMode
+            overlayView?.overlayOpacity = store.getOverlayOpacity()
             overlayView?.stickSensitivity = store.getStickSensitivity()
             overlayView?.stickDeadzone = store.getStickDeadzone()
             overlayView?.reloadControls()
@@ -93,6 +94,7 @@ class OverlayService : Service() {
             }
         ).apply {
             this.editMode = this@OverlayService.editMode
+            this.overlayOpacity = store.getOverlayOpacity()
             this.stickSensitivity = store.getStickSensitivity()
             this.stickDeadzone = store.getStickDeadzone()
         }
@@ -121,9 +123,9 @@ class OverlayService : Service() {
         removeInspector()
 
         val cardBg = GradientDrawable().apply {
-            setColor(Color.argb(242, 24, 28, 38))
+            setColor(Color.argb(245, 22, 27, 38))
             cornerRadius = 28f
-            setStroke(3, Color.argb(230, 255, 205, 50))
+            setStroke(3, Color.argb(235, 250, 204, 21))
         }
 
         val root = LinearLayout(this).apply {
@@ -141,7 +143,7 @@ class OverlayService : Service() {
 
         val sizeLabel = TextView(this).apply {
             text = "Size: ${control.radiusPx.toInt()}px"
-            setTextColor(Color.argb(210, 200, 225, 255))
+            setTextColor(Color.argb(220, 186, 230, 253))
             textSize = 14f
             setPadding(0, 10, 0, 6)
         }
@@ -187,7 +189,7 @@ class OverlayService : Service() {
         if (!control.isStick) {
             val stickyCheck = CheckBox(this).apply {
                 text = "Sticky Toggle (1st tap = hold, 2nd tap = release)"
-                setTextColor(Color.argb(255, 255, 220, 110))
+                setTextColor(Color.argb(255, 253, 224, 71))
                 isChecked = control.sticky
                 setOnCheckedChangeListener { _, checked ->
                     control.sticky = checked
@@ -293,13 +295,19 @@ class OverlayService : Service() {
             return
         }
 
+        val bubbleBg = GradientDrawable().apply {
+            setColor(Color.argb(230, 29, 78, 216))
+            cornerRadius = 999f
+            setStroke(3, Color.argb(230, 125, 211, 252))
+        }
+
         val bubble = TextView(this).apply {
             text = "PAD"
             setTextColor(Color.WHITE)
-            textSize = 14f
+            textSize = 13f
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.argb(215, 25, 95, 185))
-            setPadding(28, 20, 28, 20)
+            background = bubbleBg
+            setPadding(30, 18, 30, 18)
         }
 
         val params = WindowManager.LayoutParams(
@@ -393,6 +401,7 @@ class OverlayService : Service() {
                 showExpandedOverlay()
             }
             ACTION_UPDATE_SETTINGS -> {
+                overlayView?.overlayOpacity = store.getOverlayOpacity()
                 overlayView?.stickSensitivity = store.getStickSensitivity()
                 overlayView?.stickDeadzone = store.getStickDeadzone()
                 overlayView?.reloadControls()
