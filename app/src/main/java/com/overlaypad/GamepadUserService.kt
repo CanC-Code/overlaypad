@@ -121,14 +121,10 @@ class GamepadUserService : IGamepadService.Stub() {
         val target = injectTarget ?: return
         val method = injectMethod ?: return
         try {
-            // Mode 2 = INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH for foreground window delivery
-            method.invoke(target, event, 2)
-        } catch (_: Throwable) {
-            try {
-                method.invoke(target, event, 0)
-            } catch (t: Throwable) {
-                statusMessage = "Inject error: ${t.cause?.message ?: t.message}"
-            }
+            // Mode 0 = INJECT_INPUT_EVENT_MODE_ASYNC to avoid blocking game/window threads
+            method.invoke(target, event, 0)
+        } catch (t: Throwable) {
+            statusMessage = "Inject error: ${t.cause?.message ?: t.message}"
         }
     }
 
@@ -254,8 +250,9 @@ class GamepadUserService : IGamepadService.Stub() {
     override fun getStatus(): String = statusMessage
 
     override fun getForegroundPackage(): String {
+        var proc: Process? = null
         return try {
-            val proc = Runtime.getRuntime().exec(
+            proc = Runtime.getRuntime().exec(
                 arrayOf(
                     "sh",
                     "-c",
@@ -263,7 +260,7 @@ class GamepadUserService : IGamepadService.Stub() {
                 )
             )
             val output = BufferedReader(InputStreamReader(proc.inputStream)).use { it.readText() }
-            proc.waitFor()
+            proc.waitFor(1, TimeUnit.SECONDS)
             val matches = Regex("([a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)+)/").findAll(output)
             for (m in matches) {
                 val pkg = m.groupValues.getOrNull(1) ?: ""
@@ -274,6 +271,8 @@ class GamepadUserService : IGamepadService.Stub() {
             matches.firstOrNull()?.groupValues?.getOrNull(1) ?: ""
         } catch (_: Throwable) {
             ""
+        } finally {
+            proc?.destroyForcibly()
         }
     }
 
@@ -281,6 +280,5 @@ class GamepadUserService : IGamepadService.Stub() {
         motionTicker?.cancel(true)
         motionExecutor.shutdownNow()
         resetAll()
-        System.exit(0)
     }
 }
