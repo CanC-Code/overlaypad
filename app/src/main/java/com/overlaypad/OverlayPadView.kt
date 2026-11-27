@@ -70,9 +70,9 @@ class OverlayPadView(
     private var pillTopX: Float = 0f
     private var pillTopY: Float = 0f
     private var pillInitialized = false
-    private val pillW = 148f
-    private val pillH = 62f
-    private val pillGap = 16f
+    private val pillW = 104f
+    private val pillH = 44f
+    private val pillGap = 10f
 
     private var draggingEditPill = false
     private var draggingHidePill = false
@@ -90,11 +90,11 @@ class OverlayPadView(
     }
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 4f
+        strokeWidth = 3f
     }
     private val stickyRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 6f
+        strokeWidth = 5f
     }
     private val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -568,23 +568,24 @@ class OverlayPadView(
             canvas.drawText(labelText, cx, cy + textPaint.textSize * 0.35f, textPaint)
         }
 
+        val pillAlpha = if (editMode) 235 else scaleAlpha(135)
         pillPaint.color = if (editMode) {
-            Color.argb(240, 234, 179, 8)
+            Color.argb(pillAlpha, 234, 179, 8)
         } else {
-            Color.argb(scaleAlpha(225), 22, 29, 44)
+            Color.argb(pillAlpha, 22, 29, 44)
         }
-        canvas.drawRoundRect(editPillRect, 24f, 24f, pillPaint)
-        ringPaint.color = if (editMode) Color.WHITE else Color.argb(scaleAlpha(220), 250, 204, 21)
-        canvas.drawRoundRect(editPillRect, 24f, 24f, ringPaint)
-        textPaint.textSize = 23f
-        textPaint.color = if (editMode) Color.BLACK else Color.WHITE
-        canvas.drawText(if (editMode) "DONE" else "EDIT", editPillRect.centerX(), editPillRect.centerY() + 8f, textPaint)
+        canvas.drawRoundRect(editPillRect, 18f, 18f, pillPaint)
+        ringPaint.color = if (editMode) Color.WHITE else Color.argb(scaleAlpha(155), 250, 204, 21)
+        canvas.drawRoundRect(editPillRect, 18f, 18f, ringPaint)
+        textPaint.textSize = 16f
+        textPaint.color = if (editMode) Color.BLACK else Color.argb(scaleAlpha(220), 255, 255, 255)
+        canvas.drawText(if (editMode) "DONE" else "EDIT", editPillRect.centerX(), editPillRect.centerY() + 6f, textPaint)
 
-        pillPaint.color = Color.argb(scaleAlpha(225), 29, 78, 216)
-        canvas.drawRoundRect(hidePillRect, 24f, 24f, pillPaint)
-        ringPaint.color = Color.argb(scaleAlpha(220), 125, 211, 252)
-        canvas.drawRoundRect(hidePillRect, 24f, 24f, ringPaint)
-        textPaint.color = Color.WHITE
-        canvas.drawText("HIDE", hidePillRect.centerX(), hidePillRect.centerY() + 8f, textPaint)
+        pillPaint.color = Color.argb(pillAlpha, 29, 78, 216)
+        canvas.drawRoundRect(hidePillRect, 18f, 18f, pillPaint)
+        ringPaint.color = Color.argb(scaleAlpha(155), 125, 211, 252)
+        canvas.drawRoundRect(hidePillRect, 18f, 18f, ringPaint)
+        textPaint.color = Color.argb(scaleAlpha(220), 255, 255, 255)
+        canvas.drawText("HIDE", hidePillRect.centerX(), hidePillRect.centerY() + 6f, textPaint)
     }
 }

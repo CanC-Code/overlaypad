@@ -28,6 +28,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:maxLines="1"
                     android:text="OverlayPad"
                     android:textColor="#F8FAFC"
                     android:textSize="24sp"
@@ -36,6 +37,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:maxLines="1"
                     android:text="Virtual Hardware Gamepad Overlay"
                     android:textColor="#94A3B8"
                     android:textSize="13sp" />
@@ -46,6 +48,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="40dp"
                 android:background="@drawable/bg_btn_secondary"
+                android:maxLines="1"
                 android:paddingLeft="14dp"
                 android:paddingRight="14dp"
                 android:text="Shizuku App"
@@ -77,6 +80,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/bg_pill_warn"
                     android:gravity="center"
+                    android:maxLines="1"
                     android:paddingTop="6dp"
                     android:paddingBottom="6dp"
                     android:text="Overlay: OFF"
@@ -93,6 +97,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/bg_pill_warn"
                     android:gravity="center"
+                    android:maxLines="1"
                     android:paddingTop="6dp"
                     android:paddingBottom="6dp"
                     android:text="Shizuku: OFF"
@@ -108,6 +113,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/bg_pill_warn"
                     android:gravity="center"
+                    android:maxLines="1"
                     android:paddingTop="6dp"
                     android:paddingBottom="6dp"
                     android:text="Perm: NO"
@@ -137,6 +143,7 @@
                     android:layout_marginEnd="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
+                    android:maxLines="1"
                     android:text="1. Overlay Perm"
                     android:textAllCaps="false"
                     android:textColor="#F1F5F9"
@@ -149,6 +156,7 @@
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
+                    android:maxLines="1"
                     android:text="2. Init Gamepad"
                     android:textAllCaps="false"
                     android:textColor="#F1F5F9"
@@ -179,6 +187,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
                 android:background="@drawable/bg_btn_primary"
+                android:maxLines="1"
                 android:text="Start / Show Gamepad Overlay"
                 android:textAllCaps="false"
                 android:textColor="#FFFFFF"
@@ -198,7 +207,8 @@
                     android:layout_marginEnd="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
-                    android:text="Collapse Pill"
+                    android:maxLines="1"
+                    android:text="Collapse 🎮"
                     android:textAllCaps="false"
                     android:textColor="#E2E8F0"
                     android:textSize="13sp" />
@@ -210,6 +220,7 @@
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
+                    android:maxLines="1"
                     android:text="Edit Layout: OFF"
                     android:textAllCaps="false"
                     android:textColor="#FDE047"
@@ -229,6 +240,7 @@
                     android:layout_marginEnd="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
+                    android:maxLines="1"
                     android:text="Release All Inputs"
                     android:textAllCaps="false"
                     android:textColor="#38BDF8"
@@ -241,6 +253,7 @@
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
+                    android:maxLines="1"
                     android:text="Reset Positions"
                     android:textAllCaps="false"
                     android:textColor="#CBD5E1"
@@ -253,6 +266,7 @@
                 android:layout_height="44dp"
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_btn_danger"
+                android:maxLines="1"
                 android:text="Stop Overlay Service"
                 android:textAllCaps="false"
                 android:textColor="#FDA4AF"
@@ -291,17 +305,17 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="4dp"
                 android:paddingBottom="10dp"
-                android:text="Active Profile: None | Last Game: None"
+                android:text="Active: None | Last Game: None"
                 android:textColor="#94A3B8"
                 android:textSize="12sp" />
 
             <Spinner
                 android:id="@+id/spinner_profiles"
                 android:layout_width="match_parent"
-                android:layout_height="44dp"
+                android:layout_height="46dp"
                 android:background="@drawable/bg_btn_secondary"
-                android:paddingLeft="10dp"
-                android:paddingRight="10dp" />
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -313,51 +327,60 @@
                     android:id="@+id/btn_save_profile"
                     android:layout_width="0dp"
                     android:layout_height="42dp"
-                    android:layout_marginEnd="4dp"
+                    android:layout_marginEnd="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
-                    android:text="Save New"
+                    android:maxLines="1"
+                    android:text="Save Profile"
                     android:textAllCaps="false"
                     android:textColor="#38BDF8"
-                    android:textSize="12sp" />
+                    android:textSize="13sp" />
 
                 <Button
                     android:id="@+id/btn_load_profile"
                     android:layout_width="0dp"
                     android:layout_height="42dp"
-                    android:layout_marginStart="4dp"
-                    android:layout_marginEnd="4dp"
+                    android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
-                    android:text="Load"
+                    android:maxLines="1"
+                    android:text="Load Profile"
                     android:textAllCaps="false"
                     android:textColor="#4ADE80"
-                    android:textSize="12sp" />
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
 
                 <Button
                     android:id="@+id/btn_link_game_profile"
                     android:layout_width="0dp"
                     android:layout_height="42dp"
-                    android:layout_marginStart="4dp"
-                    android:layout_marginEnd="4dp"
+                    android:layout_marginEnd="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_secondary"
-                    android:text="Link Game"
+                    android:maxLines="1"
+                    android:text="Link Game Pkg"
                     android:textAllCaps="false"
                     android:textColor="#FDE047"
-                    android:textSize="12sp" />
+                    android:textSize="13sp" />
 
                 <Button
                     android:id="@+id/btn_delete_profile"
                     android:layout_width="0dp"
                     android:layout_height="42dp"
-                    android:layout_marginStart="4dp"
+                    android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_danger"
-                    android:text="Delete"
+                    android:maxLines="1"
+                    android:text="Delete Profile"
                     android:textAllCaps="false"
                     android:textColor="#FDA4AF"
-                    android:textSize="12sp" />
+                    android:textSize="13sp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -389,6 +412,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
                     android:background="@drawable/bg_btn_secondary"
+                    android:maxLines="1"
                     android:paddingLeft="12dp"
                     android:paddingRight="12dp"
                     android:text="Expand"
@@ -466,6 +490,7 @@
                         android:layout_marginEnd="6dp"
                         android:layout_weight="1"
                         android:background="@drawable/bg_btn_secondary"
+                        android:maxLines="1"
                         android:text="Show All"
                         android:textAllCaps="false"
                         android:textColor="#E2E8F0"
@@ -478,6 +503,7 @@
                         android:layout_marginStart="6dp"
                         android:layout_weight="1"
                         android:background="@drawable/bg_btn_secondary"
+                        android:maxLines="1"
                         android:text="Hide All"
                         android:textAllCaps="false"
                         android:textColor="#E2E8F0"

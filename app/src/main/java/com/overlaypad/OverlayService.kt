@@ -345,18 +345,20 @@ class OverlayService : Service() {
         }
 
         val bubbleBg = GradientDrawable().apply {
-            setColor(Color.argb(230, 29, 78, 216))
+            setColor(Color.argb(215, 22, 29, 44))
             cornerRadius = 999f
-            setStroke(3, Color.argb(230, 125, 211, 252))
+            setStroke(2, Color.argb(215, 56, 189, 248))
         }
 
         val bubble = TextView(this).apply {
-            text = "PAD"
+            text = "🎮"
             setTextColor(Color.WHITE)
-            textSize = 13f
+            textSize = 18f
             gravity = Gravity.CENTER
             background = bubbleBg
-            setPadding(30, 18, 30, 18)
+            minWidth = 84
+            minHeight = 84
+            setPadding(16, 14, 16, 14)
         }
 
         val params = WindowManager.LayoutParams(
