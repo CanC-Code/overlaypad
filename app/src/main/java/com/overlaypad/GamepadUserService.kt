@@ -121,9 +121,14 @@ class GamepadUserService : IGamepadService.Stub() {
         val target = injectTarget ?: return
         val method = injectMethod ?: return
         try {
-            method.invoke(target, event, 0)
-        } catch (t: Throwable) {
-            statusMessage = "Inject error: ${t.cause?.message ?: t.message}"
+            // Mode 2 = INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH for foreground window delivery
+            method.invoke(target, event, 2)
+        } catch (_: Throwable) {
+            try {
+                method.invoke(target, event, 0)
+            } catch (t: Throwable) {
+                statusMessage = "Inject error: ${t.cause?.message ?: t.message}"
+            }
         }
     }
 
@@ -149,9 +154,9 @@ class GamepadUserService : IGamepadService.Stub() {
             keyCode,
             0,
             metaState,
-            KeyCharacterMap.VIRTUAL_KEYBOARD,
+            0,
             linuxKeyCode,
-            KeyEvent.FLAG_FROM_SYSTEM,
+            0,
             source
         )
         inject(event)
@@ -208,7 +213,7 @@ class GamepadUserService : IGamepadService.Stub() {
             0,
             1.0f,
             1.0f,
-            KeyCharacterMap.VIRTUAL_KEYBOARD,
+            0,
             0,
             InputDevice.SOURCE_JOYSTICK or InputDevice.SOURCE_GAMEPAD,
             0
@@ -235,9 +240,9 @@ class GamepadUserService : IGamepadService.Stub() {
                 keyCode,
                 0,
                 0,
-                KeyCharacterMap.VIRTUAL_KEYBOARD,
                 0,
-                KeyEvent.FLAG_FROM_SYSTEM,
+                0,
+                0,
                 InputDevice.SOURCE_GAMEPAD
             )
             inject(event)
@@ -250,11 +255,23 @@ class GamepadUserService : IGamepadService.Stub() {
 
     override fun getForegroundPackage(): String {
         return try {
-            val proc = Runtime.getRuntime().exec(arrayOf("sh", "-c", "dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | head -n 1"))
-            val line = BufferedReader(InputStreamReader(proc.inputStream)).use { it.readLine() } ?: ""
+            val proc = Runtime.getRuntime().exec(
+                arrayOf(
+                    "sh",
+                    "-c",
+                    "dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|ResumedActivity' | head -n 5"
+                )
+            )
+            val output = BufferedReader(InputStreamReader(proc.inputStream)).use { it.readText() }
             proc.waitFor()
-            val match = Regex("([a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)+)/").find(line)
-            match?.groupValues?.getOrNull(1) ?: ""
+            val matches = Regex("([a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)+)/").findAll(output)
+            for (m in matches) {
+                val pkg = m.groupValues.getOrNull(1) ?: ""
+                if (pkg.isNotBlank() && pkg != "com.overlaypad" && !pkg.contains("launcher") && pkg != "com.android.systemui") {
+                    return pkg
+                }
+            }
+            matches.firstOrNull()?.groupValues?.getOrNull(1) ?: ""
         } catch (_: Throwable) {
             ""
         }

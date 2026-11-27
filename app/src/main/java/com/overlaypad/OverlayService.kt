@@ -65,7 +65,7 @@ class OverlayService : Service() {
         } catch (_: Throwable) {
             ""
         }
-        if (pkg.isBlank() || pkg == packageName || pkg == "com.android.systemui") return
+        if (pkg.isBlank() || pkg == packageName || pkg == "com.android.systemui" || pkg.contains("launcher", ignoreCase = true)) return
 
         if (pkg != store.getLastDetectedGamePackage()) {
             store.setLastDetectedGamePackage(pkg)
@@ -76,13 +76,12 @@ class OverlayService : Service() {
         lastObservedPackage = pkg
 
         val matchedProfile = store.findProfileForPackage(pkg) ?: return
-        if (matchedProfile != store.getActiveProfileName()) {
-            if (store.loadNamedProfile(matchedProfile)) {
-                overlayView?.overlayOpacity = store.getOverlayOpacity()
-                overlayView?.stickSensitivity = store.getStickSensitivity()
-                overlayView?.stickDeadzone = store.getStickDeadzone()
-                overlayView?.reloadControls()
-            }
+        overlayView?.releaseAllInputs()
+        if (store.loadNamedProfile(matchedProfile)) {
+            overlayView?.overlayOpacity = store.getOverlayOpacity()
+            overlayView?.stickSensitivity = store.getStickSensitivity()
+            overlayView?.stickDeadzone = store.getStickDeadzone()
+            overlayView?.reloadControls()
         }
     }
 
