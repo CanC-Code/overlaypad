@@ -1,6 +1,7 @@
 package com.overlaypad
 
 import android.os.SystemClock
+import android.util.Log
 import android.view.InputDevice
 import android.view.InputEvent
 import android.view.KeyCharacterMap
@@ -9,16 +10,15 @@ import android.view.MotionEvent
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.lang.reflect.Method
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
-import kotlin.math.abs
 
 class GamepadUserService : IGamepadService.Stub() {
 
+    private var uinputActive = false
+    private var nativeLibraryLoaded = false
     private var injectTarget: Any? = null
     private var injectMethod: Method? = null
-    private var statusMessage = "Initializing InputManager..."
+    private var statusMessage = "Initializing gamepad backend..."
 
     private var axisLx = 0f
     private var axisLy = 0f
@@ -29,15 +29,17 @@ class GamepadUserService : IGamepadService.Stub() {
     private var axisHatX = 0f
     private var axisHatY = 0f
 
-    private var metaState = 0
-    private val heldKeys = HashSet<Int>()
-
-    private val motionExecutor = Executors.newSingleThreadScheduledExecutor()
-    private var motionTicker: ScheduledFuture<*>? = null
+    private val heldLinuxKeys = HashSet<Int>()
 
     init {
+        try {
+            System.loadLibrary("uinputpad")
+            nativeLibraryLoaded = true
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to load libuinputpad.so", t)
+        }
         initInputManager()
-        startMotionTicker()
+        initBackend()
     }
 
     private fun initInputManager() {
@@ -52,7 +54,6 @@ class GamepadUserService : IGamepadService.Stub() {
             )
             injectTarget = instance
             injectMethod = method
-            statusMessage = "Gamepad backend active"
         } catch (t: Throwable) {
             try {
                 val imClass = Class.forName("android.hardware.input.InputManager")
@@ -65,33 +66,30 @@ class GamepadUserService : IGamepadService.Stub() {
                 )
                 injectTarget = instance
                 injectMethod = method
-                statusMessage = "Gamepad backend active"
             } catch (t2: Throwable) {
-                statusMessage = "InputManager reflection failed: ${t2.message}"
+                Log.e(TAG, "InputManager reflection failed", t2)
             }
         }
     }
 
-    private fun hasActiveAxes(): Boolean {
-        return abs(axisLx) > 0.001f ||
-            abs(axisLy) > 0.001f ||
-            abs(axisRx) > 0.001f ||
-            abs(axisRy) > 0.001f ||
-            axisLt > 0.001f ||
-            axisRt > 0.001f ||
-            abs(axisHatX) > 0.001f ||
-            abs(axisHatY) > 0.001f
-    }
-
-    private fun startMotionTicker() {
-        motionTicker = motionExecutor.scheduleAtFixedRate({
-            try {
-                if (hasActiveAxes()) {
-                    emitMotionSnapshot()
-                }
-            } catch (_: Throwable) {
+    private fun initBackend() {
+        if (nativeLibraryLoaded) {
+            uinputActive = try {
+                nativeInitGamepad("OverlayPad Virtual Gamepad", 0x045e, 0x028e)
+            } catch (t: Throwable) {
+                Log.e(TAG, "nativeInitGamepad failed", t)
+                false
             }
-        }, 16L, 16L, TimeUnit.MILLISECONDS)
+        }
+        if (uinputActive) {
+            statusMessage = "Gamepad backend active (/dev/uinput)"
+            return
+        }
+        if (injectTarget != null && injectMethod != null) {
+            statusMessage = "Gamepad backend active (InputManager fallback)"
+        } else {
+            statusMessage = "No gamepad backend available"
+        }
     }
 
     private fun linuxToAndroidKeyCode(linuxCode: Int): Int {
@@ -128,15 +126,24 @@ class GamepadUserService : IGamepadService.Stub() {
     }
 
     override fun setButton(linuxKeyCode: Int, pressed: Boolean) {
+        if (pressed) {
+            heldLinuxKeys.add(linuxKeyCode)
+        } else {
+            heldLinuxKeys.remove(linuxKeyCode)
+        }
+        if (uinputActive) {
+            try {
+                nativeSetButton(linuxKeyCode, pressed)
+                return
+            } catch (t: Throwable) {
+                Log.e(TAG, "nativeSetButton failed, falling back", t)
+                uinputActive = false
+            }
+        }
         val keyCode = linuxToAndroidKeyCode(linuxKeyCode)
         if (keyCode == KeyEvent.KEYCODE_UNKNOWN) return
         val now = SystemClock.uptimeMillis()
         val action = if (pressed) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP
-        if (pressed) {
-            heldKeys.add(keyCode)
-        } else {
-            heldKeys.remove(keyCode)
-        }
         val source = if (keyCode in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_RIGHT) {
             InputDevice.SOURCE_DPAD or InputDevice.SOURCE_GAMEPAD
         } else {
@@ -148,7 +155,7 @@ class GamepadUserService : IGamepadService.Stub() {
             action,
             keyCode,
             0,
-            metaState,
+            0,
             KeyCharacterMap.VIRTUAL_KEYBOARD,
             linuxKeyCode,
             KeyEvent.FLAG_FROM_SYSTEM,
@@ -167,6 +174,15 @@ class GamepadUserService : IGamepadService.Stub() {
             0x05 -> axisRt = (value / 255f).coerceIn(0f, 1f)
             0x10 -> axisHatX = value.coerceIn(-1, 1).toFloat()
             0x11 -> axisHatY = value.coerceIn(-1, 1).toFloat()
+        }
+        if (uinputActive) {
+            try {
+                nativeSetAbsAxis(linuxAbsCode, value)
+                return
+            } catch (t: Throwable) {
+                Log.e(TAG, "nativeSetAbsAxis failed, falling back", t)
+                uinputActive = false
+            }
         }
         emitMotionSnapshot()
     }
@@ -204,7 +220,7 @@ class GamepadUserService : IGamepadService.Stub() {
             1,
             props,
             coords,
-            metaState,
+            0,
             0,
             1.0f,
             1.0f,
@@ -218,6 +234,10 @@ class GamepadUserService : IGamepadService.Stub() {
     }
 
     override fun resetAll() {
+        for (code in heldLinuxKeys.toList()) {
+            setButton(code, false)
+        }
+        heldLinuxKeys.clear()
         axisLx = 0f
         axisLy = 0f
         axisRx = 0f
@@ -226,23 +246,20 @@ class GamepadUserService : IGamepadService.Stub() {
         axisRt = 0f
         axisHatX = 0f
         axisHatY = 0f
-        val now = SystemClock.uptimeMillis()
-        for (keyCode in heldKeys.toList()) {
-            val event = KeyEvent(
-                now,
-                now,
-                KeyEvent.ACTION_UP,
-                keyCode,
-                0,
-                0,
-                KeyCharacterMap.VIRTUAL_KEYBOARD,
-                0,
-                KeyEvent.FLAG_FROM_SYSTEM,
-                InputDevice.SOURCE_GAMEPAD
-            )
-            inject(event)
+        if (uinputActive) {
+            try {
+                nativeSetAbsAxis(0x00, 0)
+                nativeSetAbsAxis(0x01, 0)
+                nativeSetAbsAxis(0x03, 0)
+                nativeSetAbsAxis(0x04, 0)
+                nativeSetAbsAxis(0x02, 0)
+                nativeSetAbsAxis(0x05, 0)
+                nativeSetAbsAxis(0x10, 0)
+                nativeSetAbsAxis(0x11, 0)
+                return
+            } catch (_: Throwable) {
+            }
         }
-        heldKeys.clear()
         emitMotionSnapshot()
     }
 
@@ -270,8 +287,22 @@ class GamepadUserService : IGamepadService.Stub() {
     }
 
     fun destroy() {
-        motionTicker?.cancel(true)
-        motionExecutor.shutdownNow()
         resetAll()
+        if (uinputActive) {
+            uinputActive = false
+            try {
+                nativeCloseGamepad()
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private external fun nativeInitGamepad(deviceName: String, vendorId: Int, productId: Int): Boolean
+    private external fun nativeSetButton(linuxKeyCode: Int, pressed: Boolean)
+    private external fun nativeSetAbsAxis(linuxAbsCode: Int, value: Int)
+    private external fun nativeCloseGamepad()
+
+    companion object {
+        private const val TAG = "GamepadUserService"
     }
 }
