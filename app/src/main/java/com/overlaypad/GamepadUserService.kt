@@ -121,7 +121,6 @@ class GamepadUserService : IGamepadService.Stub() {
         val target = injectTarget ?: return
         val method = injectMethod ?: return
         try {
-            // Mode 0 = INJECT_INPUT_EVENT_MODE_ASYNC to avoid blocking game/window threads
             method.invoke(target, event, 0)
         } catch (t: Throwable) {
             statusMessage = "Inject error: ${t.cause?.message ?: t.message}"
@@ -150,9 +149,9 @@ class GamepadUserService : IGamepadService.Stub() {
             keyCode,
             0,
             metaState,
-            0,
+            KeyCharacterMap.VIRTUAL_KEYBOARD,
             linuxKeyCode,
-            0,
+            KeyEvent.FLAG_FROM_SYSTEM,
             source
         )
         inject(event)
@@ -209,7 +208,7 @@ class GamepadUserService : IGamepadService.Stub() {
             0,
             1.0f,
             1.0f,
-            0,
+            KeyCharacterMap.VIRTUAL_KEYBOARD,
             0,
             InputDevice.SOURCE_JOYSTICK or InputDevice.SOURCE_GAMEPAD,
             0
@@ -236,9 +235,9 @@ class GamepadUserService : IGamepadService.Stub() {
                 keyCode,
                 0,
                 0,
+                KeyCharacterMap.VIRTUAL_KEYBOARD,
                 0,
-                0,
-                0,
+                KeyEvent.FLAG_FROM_SYSTEM,
                 InputDevice.SOURCE_GAMEPAD
             )
             inject(event)
@@ -256,19 +255,13 @@ class GamepadUserService : IGamepadService.Stub() {
                 arrayOf(
                     "sh",
                     "-c",
-                    "dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|ResumedActivity' | head -n 5"
+                    "dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | head -n 1"
                 )
             )
-            val output = BufferedReader(InputStreamReader(proc.inputStream)).use { it.readText() }
+            val line = BufferedReader(InputStreamReader(proc.inputStream)).use { it.readLine() } ?: ""
             proc.waitFor(1, TimeUnit.SECONDS)
-            val matches = Regex("([a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)+)/").findAll(output)
-            for (m in matches) {
-                val pkg = m.groupValues.getOrNull(1) ?: ""
-                if (pkg.isNotBlank() && pkg != "com.overlaypad" && !pkg.contains("launcher") && pkg != "com.android.systemui") {
-                    return pkg
-                }
-            }
-            matches.firstOrNull()?.groupValues?.getOrNull(1) ?: ""
+            val match = Regex("([a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)+)/").find(line)
+            match?.groupValues?.getOrNull(1) ?: ""
         } catch (_: Throwable) {
             ""
         } finally {
